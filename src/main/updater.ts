@@ -5,36 +5,51 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { app } from 'electron'
 import { compareSemver } from './util'
+import { loadSettings } from './settings'
 import { comfy } from './process'
 import { t } from './i18n'
 import type { AppUpdateAsset, AppUpdateInfo, AppUpdateProgress } from '../shared/api'
 
-/** 启动器自身的发布仓库 */
-export const RELEASE_REPO = 'njitwb/comfyui-desk'
-export const RELEASES_URL = `https://github.com/${RELEASE_REPO}/releases`
+/** 发布渠道：设置的 git 源为 gitcode 时，版本检查与更新包下载都走 GitCode，不访问 GitHub */
+type Channel = 'github' | 'gitcode'
 
-interface GithubAsset {
+export const CHANNELS: Record<Channel, { api: string; web: string }> = {
+  github: {
+    api: 'https://api.github.com/repos/njitwb/comfyui-desk',
+    web: 'https://github.com/njitwb/comfyui-desk/releases'
+  },
+  gitcode: {
+    api: 'https://gitcode.com/api/v5/repos/njitwb01/comfyui-desk',
+    web: 'https://gitcode.com/njitwb01/comfyui-desk/releases'
+  }
+}
+
+interface RawAsset {
   name: string
   browser_download_url: string
   size?: number
   digest?: string
 }
 
-interface GithubRelease {
+interface RawRelease {
   tag_name?: string
   html_url?: string
   body?: string
+  /** GitHub 用 published_at，GitCode 只有 created_at */
   published_at?: string
-  assets?: GithubAsset[]
+  created_at?: string
+  /** GitCode 返回 0/1 */
+  prerelease?: boolean | number
+  assets?: RawAsset[]
 }
 
 /** 最近一次检查结果：安装时复用，避免渲染层传 URL 进来 */
 let lastCheck: AppUpdateInfo | null = null
 
-/** GET GitHub API；仓库还没有 release 时接口返回 404，按「无发布」处理而非报错 */
+/** GET 发布源 API；仓库还没有 release 时 GitHub 返回 404，按「无发布」处理而非报错 */
 function getJson(url: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'comfyui-desk', Accept: 'application/vnd.github+json' } }, res => {
+    const req = https.get(url, { headers: { 'User-Agent': 'comfyui-desk', Accept: 'application/json' } }, res => {
       const code = res.statusCode || 0
       let data = ''
       res.on('data', d => (data += d))
@@ -53,14 +68,33 @@ function getJson(url: string): Promise<unknown> {
   })
 }
 
+function normTag(tag: string | undefined): string {
+  return (tag || '').trim().replace(/^v/i, '')
+}
+
+/** GitHub 取 latest；GitCode 没有 latest 接口，取列表里版本号最高的非预发布版本 */
+async function fetchRelease(channel: Channel): Promise<RawRelease | null> {
+  if (channel === 'github') {
+    return (await getJson(`${CHANNELS.github.api}/releases/latest`)) as RawRelease | null
+  }
+  const list = ((await getJson(`${CHANNELS.gitcode.api}/releases?per_page=30`)) as RawRelease[] | null) || []
+  return list
+    .filter(r => !r.prerelease)
+    .reduce<RawRelease | null>(
+      (best, r) => (best && compareSemver(normTag(r.tag_name), normTag(best.tag_name)) <= 0 ? best : r),
+      null
+    )
+}
+
 /** 从 release 资源里挑出可静默安装的安装包（排除 blockmap 与绿色版 zip） */
-export function pickInstallerAsset(assets: GithubAsset[] = []): GithubAsset | null {
+export function pickInstallerAsset(assets: RawAsset[] = []): RawAsset | null {
   const exe = assets.filter(a => /\.exe$/i.test(a.name) && !/\.blockmap$/i.test(a.name))
   return exe.find(a => /x64/i.test(a.name)) || exe[0] || null
 }
 
-function toAsset(a: GithubAsset | null): AppUpdateAsset | null {
+function toAsset(a: RawAsset | null): AppUpdateAsset | null {
   if (!a) return null
+  // GitCode 的资产不带 size / digest：大小在下载响应里补，校验则跳过
   return { name: a.name, url: a.browser_download_url, size: a.size || 0, digest: a.digest || '' }
 }
 
@@ -72,11 +106,12 @@ export function parseSha256(digest: string): string | null {
 /** 检查最新 release 与当前版本的差异 */
 export async function checkAppUpdate(): Promise<AppUpdateInfo> {
   const current = app.getVersion()
+  const channel: Channel = loadSettings().gitMirror === 'gitcode' ? 'gitcode' : 'github'
   const base: AppUpdateInfo = {
     current,
     latest: '',
     hasUpdate: false,
-    url: RELEASES_URL,
+    url: CHANNELS[channel].web,
     notes: '',
     publishedAt: '',
     asset: null,
@@ -84,16 +119,16 @@ export async function checkAppUpdate(): Promise<AppUpdateInfo> {
   }
   let info = base
   try {
-    const rel = (await getJson(`https://api.github.com/repos/${RELEASE_REPO}/releases/latest`)) as GithubRelease | null
-    const latest = (rel?.tag_name || '').trim().replace(/^v/i, '')
+    const rel = await fetchRelease(channel)
+    const latest = normTag(rel?.tag_name)
     if (latest) {
       info = {
         ...base,
         latest,
         hasUpdate: compareSemver(latest, current) > 0,
-        url: rel?.html_url || RELEASES_URL,
+        url: rel?.html_url || `${CHANNELS[channel].web}/tag/${rel?.tag_name}`,
         notes: (rel?.body || '').trim(),
-        publishedAt: rel?.published_at || '',
+        publishedAt: rel?.published_at || rel?.created_at || '',
         asset: toAsset(pickInstallerAsset(rel?.assets))
       }
     }
@@ -104,20 +139,31 @@ export async function checkAppUpdate(): Promise<AppUpdateInfo> {
   return info
 }
 
-/** 下载安装包到 userData/updates，跟随重定向 */
-function download(url: string, dest: string, onBytes: (n: number) => void, redirects = 5): Promise<void> {
+/** 下载安装包到 userData/updates，跟随重定向；onTotal 用于补上响应头里的大小 */
+function download(
+  url: string,
+  dest: string,
+  onBytes: (n: number) => void,
+  onTotal: (n: number) => void,
+  redirects = 5
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { 'User-Agent': 'comfyui-desk' } }, res => {
       const code = res.statusCode || 0
       if (code >= 300 && code < 400 && res.headers.location) {
         res.resume()
         if (redirects <= 0) return reject(new Error('too many redirects'))
-        return download(new URL(res.headers.location, url).toString(), dest, onBytes, redirects - 1).then(resolve, reject)
+        return download(new URL(res.headers.location, url).toString(), dest, onBytes, onTotal, redirects - 1).then(
+          resolve,
+          reject
+        )
       }
       if (code !== 200) {
         res.resume()
         return reject(new Error(`HTTP ${code}`))
       }
+      const len = Number(res.headers['content-length'] || 0)
+      if (len > 0) onTotal(len)
       const out = fs.createWriteStream(dest)
       res.on('data', d => onBytes(d.length))
       res.on('error', reject)
@@ -159,21 +205,30 @@ export async function installUpdate(on: (e: AppUpdateProgress) => void): Promise
   comfy.pushLog('sys', t('m.updater.logStart', { version, name: asset.name }))
 
   let received = 0
+  // GitCode 的资产不带 size，用下载响应头里的 content-length 补上，否则进度条始终 0%
+  let total = asset.size
   let lastEmit = 0
+  const percent = (): number => (total ? Math.min(99, Math.floor((received / total) * 100)) : 0)
   const report = (stage: AppUpdateProgress['stage'], message: string, force = false): void => {
-    const percent = asset.size ? Math.min(99, Math.floor((received / asset.size) * 100)) : 0
     const now = Date.now()
     if (!force && now - lastEmit < 150) return
     lastEmit = now
-    on({ stage, received, total: asset.size, percent, message })
+    on({ stage, received, total, percent: percent(), message })
   }
 
   try {
     report('download', t('m.updater.downloading', { percent: 0 }), true)
-    await download(asset.url, file, n => {
-      received += n
-      report('download', t('m.updater.downloading', { percent: asset.size ? Math.floor((received / asset.size) * 100) : 0 }))
-    })
+    await download(
+      asset.url,
+      file,
+      n => {
+        received += n
+        report('download', t('m.updater.downloading', { percent: percent() }))
+      },
+      n => {
+        total = n
+      }
+    )
   } catch (e) {
     fs.rmSync(file, { force: true })
     throw e
@@ -193,8 +248,8 @@ export async function installUpdate(on: (e: AppUpdateProgress) => void): Promise
   await comfy.stop()
   on({
     stage: 'install',
-    received: asset.size,
-    total: asset.size,
+    received: total,
+    total,
     percent: 100,
     message: t('m.updater.installing')
   })

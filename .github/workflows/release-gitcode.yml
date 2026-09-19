@@ -1,0 +1,100 @@
+name: Release to GitCode
+
+# GitHub Release 发布后，把安装包 / 绿色版同步发布到 GitCode Release。
+# GitCode 无 Windows Runner，故构建仍在 GitHub 完成，这里只做搬运与发布。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 要同步的 tag（如 v1.0.0）
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gitcode-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITCODE_REPO: ${{ vars.GITCODE_REPO || 'njitwb01/comfyui-desk' }}
+      GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: 下载 GitHub Release 产物
+        run: |
+          set -euo pipefail
+          echo "tag = ${TAG}"
+          mkdir -p dist
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern '*.exe' --pattern '*.zip' --dir dist --clobber
+          ls -lh dist
+
+      - name: 创建或更新 GitCode Release
+        run: |
+          set -euo pipefail
+          if [ -z "${GITCODE_TOKEN:-}" ]; then
+            echo "::error::缺少 secrets.GITCODE_TOKEN（GitCode 个人访问令牌）"
+            exit 1
+          fi
+          API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
+
+          # 发布说明取自 GitHub Release；tag 若在 GitCode 尚不存在，
+          # 用 target_commitish 指定提交，由 GitCode 一并建 tag
+          BODY=$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json body --jq .body)
+          SHA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG}" --jq .sha)
+          PAYLOAD=$(jq -n --arg t "${TAG}" --arg n "${TAG}" --arg b "${BODY}" --arg c "${SHA}" \
+            '{tag_name: $t, name: $n, body: $b, target_commitish: $c}')
+
+          EXISTING=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
+            "${API}/releases/tags/${TAG}?access_token=${GITCODE_TOKEN}")
+          if [ "${EXISTING}" = "200" ]; then
+            ID=$(jq -r .id /tmp/release.json)
+            echo "Release ${TAG} 已存在（id=${ID}），更新描述"
+            curl -fsS -X PATCH "${API}/releases/${ID}?access_token=${GITCODE_TOKEN}" \
+              -H 'Content-Type: application/json' -d "${PAYLOAD}" > /dev/null
+          else
+            echo "创建 GitCode Release ${TAG}"
+            curl -fsS -X POST "${API}/releases?access_token=${GITCODE_TOKEN}" \
+              -H 'Content-Type: application/json' -d "${PAYLOAD}" > /dev/null
+          fi
+
+      - name: 上传安装包附件
+        run: |
+          set -euo pipefail
+          API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
+
+          # 已上传过的同名附件跳过：重复 PUT 会产生重名附件，
+          # 需要替换时先在 GitCode 网页端删除旧附件再重跑
+          curl -sS "${API}/releases/tags/${TAG}?access_token=${GITCODE_TOKEN}" \
+            | jq -r '.assets[]?.name' > /tmp/uploaded.txt || true
+
+          for file in dist/*; do
+            [ -f "${file}" ] || continue
+            name=$(basename "${file}")
+            if grep -qxF "${name}" /tmp/uploaded.txt; then
+              echo "::warning::${name} 已存在，跳过上传"
+              continue
+            fi
+
+            # 取预签名上传地址与必填请求头，再直接 PUT 到对象存储
+            resp=$(curl -fsS --get "${API}/releases/${TAG}/upload_url" \
+              --data-urlencode "access_token=${GITCODE_TOKEN}" \
+              --data-urlencode "file_name=${name}")
+            url=$(jq -r .url <<<"${resp}")
+            mapfile -t headers < <(jq -r '.headers | to_entries[] | "\(.key): \(.value)"' <<<"${resp}")
+            args=()
+            for h in "${headers[@]}"; do args+=(-H "${h}"); done
+
+            echo "上传 ${name}（$(du -h "${file}" | cut -f1)）"
+            curl -fsS -X PUT "${args[@]}" --data-binary "@${file}" "${url}" > /dev/null
+            echo "  ✓ ${name}"
+          done
+
+          echo "完成：https://gitcode.com/${GITCODE_REPO}/releases/tag/${TAG}"

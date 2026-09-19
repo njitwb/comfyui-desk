@@ -1,0 +1,52 @@
+name: Sync to GitCode
+
+# 把本仓库的分支与 tag 同步到 GitCode 镜像仓库。
+# 之所以在 GitHub 侧推、而不是在 GitCode 侧拉：
+#   1. GitCode 托管 Runner 只有 ubuntu / euler，本项目产物需 Windows 构建
+#   2. GitCode 流水线需另行申请开通，放在这边不引入该依赖
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-gitcode
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      # GitCode 仓库路径（用户名/仓库名）。命名空间与 GitHub 不同时，
+      # 在仓库 Variables 里设置 GITCODE_REPO 覆盖即可
+      GITCODE_REPO: ${{ vars.GITCODE_REPO || 'njitwb01/comfyui-desk' }}
+      GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 推送到 GitCode
+        run: |
+          set -euo pipefail
+          if [ -z "${GITCODE_TOKEN:-}" ]; then
+            echo "::error::缺少 secrets.GITCODE_TOKEN（GitCode 个人访问令牌）"
+            exit 1
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add gitcode "https://oauth2:${GITCODE_TOKEN}@gitcode.com/${GITCODE_REPO}.git"
+
+          # 取回全部分支与 tag 的引用，再以 refs/remotes/origin/* -> refs/heads/*
+          # 的形式推送（直接 --mirror 会把 refs/remotes/* 也推过去）
+          git fetch origin --prune --tags --force
+          git push gitcode --prune "refs/remotes/origin/*:refs/heads/*"
+          git push gitcode --tags --force
+
+          echo "已同步到 https://gitcode.com/${GITCODE_REPO}"
+          git ls-remote --heads --tags gitcode | sed 's/^/  /'
