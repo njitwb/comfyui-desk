@@ -77,3 +77,15 @@ jobs:
           files: |
             release/*.exe
             release/*.zip
+
+  # 同步发布到 GitCode。必须是同一条 workflow 里的下游 job 直接调用：
+  # release-gitcode.yml 的 `release: published` 触发条件对 GITHUB_TOKEN 创建的
+  # release 不生效（GitHub 限制：GITHUB_TOKEN 触发的事件不产生新的 workflow run）
+  publish-gitcode:
+    needs: windows
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/release-gitcode.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}

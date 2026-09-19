@@ -1,8 +1,23 @@
 name: Release to GitCode
 
-# GitHub Release 发布后，把安装包 / 绿色版同步发布到 GitCode Release。
+# 把 GitHub Release 的安装包 / 绿色版同步发布到 GitCode Release。
 # GitCode 无 Windows Runner，故构建仍在 GitHub 完成，这里只做搬运与发布。
+#
+# 三种入口：
+#   workflow_call      ← release.yml 建好 Release 后直接调用（唯一的自动路径）
+#   release: published ← 在网页手动发布 Release 时兜底（身份是用户，能触发；
+#                        而用 GITHUB_TOKEN 创建的 release 不会触发 workflow）
+#   workflow_dispatch  ← 手动补发
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 要同步的 tag
+        required: true
+        type: string
+    secrets:
+      GITCODE_TOKEN:
+        required: true
   release:
     types: [published]
   workflow_dispatch:
@@ -15,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-gitcode-${{ github.event.release.tag_name || inputs.tag }}
+  group: release-gitcode-${{ inputs.tag || github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
@@ -25,7 +40,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GITCODE_REPO: ${{ vars.GITCODE_REPO || 'njitwb01/comfyui-desk' }}
       GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
     steps:
       - name: 下载 GitHub Release 产物
         run: |
@@ -39,10 +54,6 @@ jobs:
       - name: 创建或更新 GitCode Release
         run: |
           set -euo pipefail
-          if [ -z "${GITCODE_TOKEN:-}" ]; then
-            echo "::error::缺少 secrets.GITCODE_TOKEN（GitCode 个人访问令牌）"
-            exit 1
-          fi
           API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
 
           # 发布说明取自 GitHub Release；tag 若在 GitCode 尚不存在，
