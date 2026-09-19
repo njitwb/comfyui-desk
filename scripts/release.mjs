@@ -13,8 +13,11 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 process.chdir(root)
 
-// electron-builder 首次打包需下载 nsis / winCodeSign 等二进制,走国内镜像加速
-process.env.ELECTRON_BUILDER_BINARIES_MIRROR ??= 'https://npmmirror.com/mirrors/electron-builder-binaries/'
+// electron-builder 首次打包需下载 nsis / winCodeSign 等二进制；本地走国内镜像，
+// CI（GitHub Actions 会置 CI=true）直连官方源更快
+if (!process.env.CI) {
+  process.env.ELECTRON_BUILDER_BINARIES_MIRROR ??= 'https://npmmirror.com/mirrors/electron-builder-binaries/'
+}
 
 const run = cmd => {
   console.log(`\n========== > ${cmd}\n`)
