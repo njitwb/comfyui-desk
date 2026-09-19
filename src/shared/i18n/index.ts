@@ -27,6 +27,7 @@ import mainDiagnostics from './locales/main-diagnostics'
 import mainNodes from './locales/main-nodes'
 import mainTerminal from './locales/main-terminal'
 import mainMisc from './locales/main-misc'
+import mainUpdater from './locales/main-updater'
 
 export const MESSAGES = {
   ...common,
@@ -51,7 +52,8 @@ export const MESSAGES = {
   ...mainDiagnostics,
   ...mainNodes,
   ...mainTerminal,
-  ...mainMisc
+  ...mainMisc,
+  ...mainUpdater
 }
 
 export type MessageKey = keyof typeof MESSAGES

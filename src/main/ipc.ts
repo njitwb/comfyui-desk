@@ -16,6 +16,7 @@ import { listNodes, installNode, updateNode, updateAllNodes, removeNode } from '
 import { scanWorkflows, workflowDir, importWorkflow, queueWorkflow, deleteWorkflow } from './workflows'
 import { terminal } from './terminal'
 import { runDiagnostics, repairEnv } from './diagnostics'
+import { checkAppUpdate, installUpdate } from './updater'
 import { run } from './util'
 import { logDir } from './logger'
 
@@ -143,6 +144,8 @@ export function registerIpc(): void {
     logDir: logDir(),
     defaultInstallPath: defaultRoot()
   }))
+  ipcMain.handle(IPC.appCheckUpdate, () => checkAppUpdate())
+  ipcMain.handle(IPC.appInstallUpdate, () => installUpdate(e => send(IPC.evUpdateProgress, e)))
   ipcMain.handle(IPC.pythonList, () => listPythons())
   ipcMain.handle(IPC.comfyVersions, () => listComfyVersions())
   ipcMain.handle(IPC.torchIndexes, () => listTorchIndexes())

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import https from 'node:https'
-import { run, gitExe } from './util'
+import { run, gitExe, compareSemver } from './util'
 import {
   paths,
   loadSettings,
@@ -34,15 +34,9 @@ async function gitAvailable(): Promise<boolean> {
   }
 }
 
-/** 语义化版本降序（v0.10.0 > v0.9.0，避免字典序误判） */
+/** 语义化版本降序比较器（v0.10.0 > v0.9.0，避免字典序误判） */
 function semverDesc(a: string, b: string): number {
-  const pa = a.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
-  const pb = b.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pb[i] || 0) - (pa[i] || 0)
-    if (d !== 0) return d
-  }
-  return 0
+  return compareSemver(b, a)
 }
 
 /** 可用的 ComfyUI 版本列表：git ls-remote → GitHub API → 静态兜底 */

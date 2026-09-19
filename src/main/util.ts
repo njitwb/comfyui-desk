@@ -84,3 +84,14 @@ export function splitArgs(s: string): string[] {
   const m = s.match(/"[^"]*"|'[^']*'|\S+/g) || []
   return m.map(x => x.replace(/^["']|["']$/g, ''))
 }
+
+/** 语义化版本比较：a > b 返回正数，a < b 返回负数，相等返回 0（忽略 v 前缀，非数字段按 0） */
+export function compareSemver(a: string, b: string): number {
+  const pa = a.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
+  const pb = b.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0)
+    if (d !== 0) return d
+  }
+  return 0
+}

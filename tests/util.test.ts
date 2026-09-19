@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitArgs, run, killTree, gitExe, gitDir } from '../src/main/util'
+import { splitArgs, run, killTree, gitExe, gitDir, compareSemver } from '../src/main/util'
 
 describe('splitArgs', () => {
   it('按空格切分', () => {
@@ -74,5 +74,28 @@ describe('killTree', () => {
   it('undefined / 0 直接返回不抛错', () => {
     expect(() => killTree(undefined)).not.toThrow()
     expect(() => killTree(0)).not.toThrow()
+  })
+})
+
+describe('compareSemver', () => {
+  it('逐段数值比较，不受字典序影响', () => {
+    expect(compareSemver('1.10.0', '1.9.0')).toBeGreaterThan(0)
+    expect(compareSemver('1.9.0', '1.10.0')).toBeLessThan(0)
+    expect(compareSemver('2.0.0', '10.0.0')).toBeLessThan(0)
+  })
+
+  it('忽略 v/V 前缀', () => {
+    expect(compareSemver('v1.2.0', '1.2.0')).toBe(0)
+    expect(compareSemver('V1.2.1', 'v1.2.0')).toBeGreaterThan(0)
+  })
+
+  it('段数不同时缺省补 0', () => {
+    expect(compareSemver('1.2', '1.2.0')).toBe(0)
+    expect(compareSemver('1.2.1', '1.2')).toBeGreaterThan(0)
+  })
+
+  it('非数字段按 0 处理', () => {
+    expect(compareSemver('master', '1.0.0')).toBeLessThan(0)
+    expect(compareSemver('1.0.0', 'master')).toBeGreaterThan(0)
   })
 })

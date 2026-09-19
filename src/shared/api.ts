@@ -44,6 +44,46 @@ export interface AppInfo {
   defaultInstallPath: string
 }
 
+/** release 中可用于静默安装的资源 */
+export interface AppUpdateAsset {
+  name: string
+  url: string
+  /** 字节数，0 表示未知 */
+  size: number
+  /** GitHub 提供的摘要（形如 sha256:xxx），缺失时为空 */
+  digest: string
+}
+
+export interface AppUpdateInfo {
+  /** 当前启动器版本 */
+  current: string
+  /** GitHub 最新 release 版本（已去掉 v 前缀）；仓库暂无 release 时为空 */
+  latest: string
+  hasUpdate: boolean
+  /** release 页面地址 */
+  url: string
+  /** release 说明（markdown 原文） */
+  notes: string
+  /** release 发布时间（ISO 字符串） */
+  publishedAt: string
+  /** 可静默安装的 Windows x64 安装包；未提供时为 null（只能手动下载） */
+  asset: AppUpdateAsset | null
+  /** 检查失败原因（网络异常 / 接口报错），成功时为空，用于区分「已是最新」与「检查失败」 */
+  error: string
+}
+
+/** 自动更新进度（下载 → 校验 → 安装） */
+export interface AppUpdateProgress {
+  stage: 'download' | 'verify' | 'install'
+  /** 已接收字节 */
+  received: number
+  /** 总字节，0 表示未知 */
+  total: number
+  percent: number
+  /** 展示文案（已按当前语言取词） */
+  message: string
+}
+
 export interface LogLine {
   ts: number
   stream: 'stdout' | 'stderr' | 'sys'
@@ -159,6 +199,11 @@ export interface LauncherApi {
   setFullScreen(flag: boolean): Promise<void>
   detectGpu(): Promise<GpuInfo[]>
   appInfo(): Promise<AppInfo>
+  /** 检查启动器自身的版本更新（GitHub 最新 release） */
+  checkUpdate(): Promise<AppUpdateInfo>
+  /** 下载并静默安装最新版本，完成后应用自动重启（失败时抛错） */
+  installUpdate(): Promise<void>
+  onUpdateProgress(cb: (e: AppUpdateProgress) => void): () => void
   listPythons(): Promise<PythonInfo[]>
   comfyVersions(): Promise<string[]>
   torchIndexes(): Promise<string[]>
@@ -234,6 +279,9 @@ export const IPC = {
   winFullScreen: 'win:fullscreen',
   gpuDetect: 'sys:gpu',
   appInfo: 'app:info',
+  appCheckUpdate: 'app:checkUpdate',
+  appInstallUpdate: 'app:installUpdate',
+  evUpdateProgress: 'ev:updateProgress',
   pythonList: 'sys:pythonList',
   comfyVersions: 'sys:comfyVersions',
   torchIndexes: 'sys:torchIndexes',
