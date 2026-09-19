@@ -1,0 +1,36 @@
+import type { MessageTable } from '../types'
+
+/** 工作流页（src/renderer/src/views/Workflows.vue），键前缀 wf. */
+export default {
+  'wf.pageTitle': ['工作流管理', 'Workflows'],
+  'wf.desc': ['管理 ComfyUI 保存的工作流文件，支持导入 JSON 与一键提交运行队列', 'Manage workflow files saved by ComfyUI, with JSON import and one-click queue submission'],
+  'wf.dir.title': ['工作流目录', 'Workflow directory'],
+  'wf.openDir': ['打开目录', 'Open folder'],
+  'wf.dir.hint': ['在 ComfyUI 网页中保存的工作流会自动出现在此目录；「运行」仅支持 API 格式 JSON（界面中开启开发者模式后导出）', 'Workflows saved in the ComfyUI web UI appear here automatically; "Run" only supports API-format JSON (export it in the UI with developer mode enabled)'],
+  'wf.libraryCount': ['工作流库（{n}）', 'Workflow library ({n})'],
+  'wf.searchPlaceholder': ['搜索名称 / 路径', 'Search name / path'],
+  'wf.scanning': ['扫描中…', 'Scanning…'],
+  'wf.refresh': ['刷新', 'Refresh'],
+  'wf.importJson': ['导入 JSON', 'Import JSON'],
+  'wf.col.name': ['名称', 'Name'],
+  'wf.col.format': ['格式', 'Format'],
+  'wf.col.nodeCount': ['节点数', 'Nodes'],
+  'wf.col.size': ['大小', 'Size'],
+  'wf.col.date': ['日期', 'Date'],
+  'wf.col.relPath': ['相对路径', 'Relative path'],
+  'wf.format.api': ['API 格式', 'API format'],
+  'wf.format.ui': ['界面格式', 'UI format'],
+  'wf.format.unknown': ['未知', 'Unknown'],
+  'wf.run.tip.apiOnly': ['仅 API 格式可运行', 'Only API-format workflows can run'],
+  'wf.run.tip.notRunning': ['ComfyUI 未运行', 'ComfyUI is not running'],
+  'wf.submitting': ['提交中…', 'Submitting…'],
+  'wf.run': ['运行', 'Run'],
+  'wf.reveal': ['定位', 'Reveal'],
+  'wf.remove': ['删除', 'Remove'],
+  'wf.emptyMatch': ['没有匹配「{keyword}」的工作流', 'No workflows match "{keyword}"'],
+  'wf.empty': ['暂无工作流文件，可在 ComfyUI 中保存或点击「导入 JSON」', 'No workflow files yet — save one in ComfyUI or click "Import JSON"'],
+  'wf.toast.imported': ['已导入 {name}', 'Imported {name}'],
+  'wf.toast.queued': ['已提交运行队列（#{number}）', 'Submitted to the run queue (#{number})'],
+  'wf.confirmDelete': ['确认删除工作流？\n{path}', 'Delete this workflow?\n{path}'],
+  'wf.toast.deleted': ['已删除 {name}', 'Deleted {name}']
+} as const satisfies MessageTable

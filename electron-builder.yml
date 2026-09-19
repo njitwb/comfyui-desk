@@ -1,0 +1,45 @@
+appId: com.comfyuidisk.app
+productName: ComfyUIDesk
+copyright: Copyright © 2026 wangbo
+
+directories:
+  output: release
+
+files:
+  - dist/**
+
+# 便携 Python / git 随包分发(路径与 bundledPython()/gitDir() 探测一致)
+extraResources:
+  - from: resources/python
+    to: python
+  - from: resources/git
+    to: git
+
+asar: true
+
+# node-pty 随包附带 N-API 预编译二进制，打包无需本机 C++ 工具链重建
+npmRebuild: false
+
+# 构建期 electron 二进制下载镜像(国内)
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  artifactName: ${name}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # always：每次安装都重建桌面快捷方式。默认策略只在快捷方式缺失/目标变化时才创建，
+  # 升级换图标后 .lnk 不变，资源管理器会继续沿用缓存的旧图标
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: ComfyUI 桌面管家
+  # 升级 / 重装时保留安装目录下的 ComfyUI-Runtime（默认卸载器是 RMDir /r 整目录删除）
+  include: build/installer.nsh

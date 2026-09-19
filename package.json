@@ -1,0 +1,37 @@
+{
+  "name": "comfyui-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ComfyUI 一站式桌面管家",
+  "main": "dist/main/index.js",
+  "author": "admin",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "prepare:python": "node scripts/prepare-python.mjs",
+    "prepare:git": "node scripts/prepare-git.mjs",
+    "pack": "electron-builder --dir --publish never",
+    "release": "node scripts/release.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@vitejs/plugin-vue": "^5.1.4",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^2.3.0",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.9",
+    "vue": "^3.5.12"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  }
+}
