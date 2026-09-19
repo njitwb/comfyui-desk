@@ -20,15 +20,35 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       # GitCode 仓库路径（用户名/仓库名）。命名空间与 GitHub 不同时，
       # 在仓库 Variables 里设置 GITCODE_REPO 覆盖即可
       GITCODE_REPO: ${{ vars.GITCODE_REPO || 'njitwb01/comfyui-desk' }}
       GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+      # 认证失败时立刻报错，而不是挂起等凭证输入（CI 里没有终端，会长时间无输出）
+      GIT_TERMINAL_PROMPT: '0'
+      # 传输停滞超过 30s 就中断（无 TTY 时 git 不打进度，卡住时日志完全静默）
+      GIT_HTTP_LOW_SPEED_LIMIT: '1000'
+      GIT_HTTP_LOW_SPEED_TIME: '30'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: 连通性与令牌预检
+        run: |
+          set -euo pipefail
+          echo "git: $(git --version)"
+          echo "--- GitCode API ---"
+          curl -sS -m 20 -o /dev/null \
+            -w '  status=%{http_code} dns=%{time_namelookup}s connect=%{time_connect}s total=%{time_total}s\n' \
+            "https://gitcode.com/api/v5/repos/${GITCODE_REPO}/releases?per_page=1" \
+            || echo "  ::warning::GitCode API 不可达"
+          echo "--- GitCode git 端点 ---"
+          curl -sS -m 20 -o /dev/null -w '  status=%{http_code} total=%{time_total}s\n' \
+            "https://gitcode.com/${GITCODE_REPO}.git/info/refs?service=git-upload-pack" \
+            || echo "  ::warning::GitCode git 端点不可达"
 
       - name: 推送到 GitCode
         run: |
@@ -42,11 +62,23 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add gitcode "https://oauth2:${GITCODE_TOKEN}@gitcode.com/${GITCODE_REPO}.git"
 
-          # 取回全部分支与 tag 的引用，再以 refs/remotes/origin/* -> refs/heads/*
-          # 的形式推送（直接 --mirror 会把 refs/remotes/* 也推过去）
+          # -c credential.helper= 屏蔽所有凭证助手，避免它在失败时弹交互式输入
+          echo "--- 取回源仓库的分支与 tag ---"
           git fetch origin --prune --tags --force
-          git push gitcode --prune "refs/remotes/origin/*:refs/heads/*"
-          git push gitcode --tags --force
+
+          echo "--- 远端当前引用（同时验证令牌可读）---"
+          git -c credential.helper= ls-remote gitcode | head -20 || true
+
+          # refs/remotes/origin/HEAD 是符号引用，会被下面的通配 refspec 匹配成
+          # refs/heads/HEAD；GitCode 以「HEAD 是关键字」拒绝，且 pre-receive 钩子
+          # 一拒全拒，会把 main 一起带崩
+          git remote set-head origin --delete
+
+          # 以 refs/remotes/origin/* -> refs/heads/* 推送（直接 --mirror 会把 refs/remotes/* 也推过去）
+          echo "--- 推送分支 ---"
+          git -c credential.helper= push --progress gitcode --prune "refs/remotes/origin/*:refs/heads/*"
+
+          echo "--- 推送 tag ---"
+          git -c credential.helper= push --progress gitcode --tags --force
 
           echo "已同步到 https://gitcode.com/${GITCODE_REPO}"
-          git ls-remote --heads --tags gitcode | sed 's/^/  /'

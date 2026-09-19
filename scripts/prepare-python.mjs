@@ -76,7 +76,8 @@ if (!fs.existsSync(path.join(tools, 'python.exe'))) {
 }
 fs.mkdirSync(path.dirname(target), { recursive: true })
 fs.rmSync(target, { recursive: true, force: true })
-fs.renameSync(tools, target)
+// 不能 rename：Windows 跨盘符会报 EXDEV（CI 里临时目录在 C:、工作区在 D:）
+fs.cpSync(tools, target, { recursive: true })
 fs.rmSync(unpackDir, { recursive: true, force: true })
 fs.rmSync(downloaded.tmp, { force: true })
 
