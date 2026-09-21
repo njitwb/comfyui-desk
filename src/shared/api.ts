@@ -137,6 +137,43 @@ export interface DownloadStart {
   useHfMirror?: boolean
 }
 
+/** 在线模型库来源：hf=HuggingFace（可切国内镜像 hf-mirror.com），ms=魔搭 ModelScope */
+export type ModelSource = 'hf' | 'ms'
+
+/** 在线模型库搜索结果（两个来源统一成同一结构） */
+export interface OnlineModel {
+  /** 仓库 ID，形如 owner/name */
+  id: string
+  source: ModelSource
+  /** 默认版本 / 分支（拼下载直链用） */
+  revision: string
+  downloads: number
+  /** 点赞 / 收藏数 */
+  likes: number
+  /** 任务标签（如 text-to-image-synthesis），无则为空 */
+  tag: string
+  /** 需登录授权才可下载（仅 HuggingFace 有此标记） */
+  gated?: boolean
+}
+
+/** 在线仓库内的文件（含已按来源/镜像拼好的下载直链） */
+export interface OnlineModelFile {
+  /** 仓库内相对路径 */
+  name: string
+  /** 字节数，0 表示未知 */
+  size: number
+  /** 可直接交给 startDownload 的直链 */
+  url: string
+}
+
+/** 在线搜索结果：query 是实际生效的检索词（自动从链接/文件名提取或近似降级后可能与输入不同） */
+export interface OnlineSearchResult {
+  query: string
+  models: OnlineModel[]
+  /** 降级搜索后是否按文件名回校验、只保留了文件列表命中的仓库（界面据此提示） */
+  fileFiltered?: boolean
+}
+
 export interface NodeItem {
   name: string
   path: string
@@ -194,6 +231,10 @@ export interface LauncherApi {
   openPath(p: string): Promise<string>
   /** 打开资源管理器并定位（选中）该文件，不直接打开 */
   revealFile(p: string): Promise<void>
+  /** 读取系统剪贴板文本（终端粘贴用） */
+  clipboardRead(): Promise<string>
+  /** 写入系统剪贴板（终端复制用） */
+  clipboardWrite(text: string): Promise<void>
   openExternal(url: string): Promise<void>
   /** 切换启动器窗口原生全屏（工作台内嵌界面全屏时联动） */
   setFullScreen(flag: boolean): Promise<void>
@@ -229,12 +270,29 @@ export interface LauncherApi {
   // models
   scanModels(): Promise<ModelCategory[]>
   deleteModel(p: string): Promise<void>
+  /** 把模型文件移动到另一个模型类别目录，返回移动后的新路径 */
+  moveModel(p: string, category: string): Promise<string>
+  /** 搜索在线模型库（HuggingFace / 魔搭）；hf 时 useMirror 决定走 hf-mirror.com 还是官方站 */
+  searchOnlineModels(source: ModelSource, query: string, useMirror: boolean): Promise<OnlineSearchResult>
+  /** 列出在线仓库内可下载文件（直链已按来源 / 镜像生成） */
+  listOnlineModelFiles(
+    source: ModelSource,
+    repoId: string,
+    revision: string,
+    useMirror: boolean
+  ): Promise<OnlineModelFile[]>
   // downloads（下载管理：可暂停/继续/取消，实时进度）
   listDownloads(): Promise<DownloadTask[]>
   startDownload(o: DownloadStart): Promise<DownloadTask>
   pauseDownload(id: string): Promise<void>
   resumeDownload(id: string): Promise<void>
   cancelDownload(id: string): Promise<void>
+  /** 全部暂停（仅正在下载的） */
+  pauseAllDownloads(): Promise<void>
+  /** 全部开始（继续已暂停的、重试失败的） */
+  resumeAllDownloads(): Promise<void>
+  /** 全部停止：取消所有任务并清理未完成的临时文件 */
+  cancelAllDownloads(): Promise<void>
   onDownloads(cb: (list: DownloadTask[]) => void): () => void
   /** 主进程侧接管了界面内下载（弹窗防火墙 / will-download）→ 提示并跳转模型管理 */
   onDownloadTaken(cb: (info: { filename: string }) => void): () => void
@@ -275,6 +333,8 @@ export const IPC = {
   pickDir: 'app:pickDir',
   openPath: 'app:openPath',
   revealFile: 'app:revealFile',
+  clipboardRead: 'app:clipboardRead',
+  clipboardWrite: 'app:clipboardWrite',
   openExternal: 'app:openExternal',
   winFullScreen: 'win:fullscreen',
   gpuDetect: 'sys:gpu',
@@ -304,12 +364,18 @@ export const IPC = {
   // models
   modelsScan: 'models:scan',
   modelsDelete: 'models:delete',
+  modelsMove: 'models:move',
+  modelsOnlineSearch: 'models:onlineSearch',
+  modelsOnlineFiles: 'models:onlineFiles',
   // downloads
   downloadsList: 'downloads:list',
   downloadsStart: 'downloads:start',
   downloadsPause: 'downloads:pause',
   downloadsResume: 'downloads:resume',
   downloadsCancel: 'downloads:cancel',
+  downloadsPauseAll: 'downloads:pauseAll',
+  downloadsResumeAll: 'downloads:resumeAll',
+  downloadsCancelAll: 'downloads:cancelAll',
   downloadsEvent: 'ev:downloads',
   downloadTaken: 'ev:downloadTaken',
   navModelDownload: 'ev:navModelDownload',

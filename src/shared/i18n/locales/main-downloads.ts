@@ -18,6 +18,13 @@ export default {
   'm.dl.logCleared': ['[模型] 已清除记录 {filename}', '[Model] Record cleared {filename}'],
   'm.dl.logCanceled': ['[模型] 已取消下载 {filename}', '[Model] Download canceled {filename}'],
   'm.dl.errTooManyRedirects': ['重定向次数过多', 'Too many redirects'],
+  'm.dl.errTimeout': ['请求超时（网络不可达或站点无响应）', 'Request timed out (network unreachable or no response)'],
+  'm.dl.errInvalidJson': ['接口返回内容无法解析', 'The API response could not be parsed'],
+  'm.dl.errBadRepo': ['无效的模型仓库 ID：{id}', 'Invalid model repository ID: {id}'],
+  'm.dl.logOnlineSearch': [
+    '[模型] 搜索 {source}「{query}」：{count} 条结果',
+    '[Model] Search {source} for "{query}": {count} result(s)'
+  ],
   'm.dl.errNotModelFile': [
     '服务器返回网页而非模型文件（可能是页面链接或需登录才可下载）',
     'The server returned a web page instead of a model file (the link may be a page link or require sign-in to download)'

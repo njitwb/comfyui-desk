@@ -109,6 +109,27 @@ describe('startDownload', () => {
     dl.cancelDownload(t.id) // 阻断外网请求
   })
 
+  it('关闭 HF 镜像时走 huggingface.co 官方直链', async () => {
+    const t = await dl.startDownload({
+      url: 'https://hf-mirror.com/u/r/blob/main/official.safetensors',
+      useHfMirror: false
+    })
+    expect(t.url).toBe('https://huggingface.co/u/r/resolve/main/official.safetensors')
+    dl.cancelDownload(t.id)
+  })
+
+  it('未显式指定 HF 源时跟随设置里的 hfMirror', async () => {
+    settings.saveSettings({ hfMirror: false })
+    const t = await dl.startDownload({ url: 'https://huggingface.co/u/r/resolve/main/setting.safetensors' })
+    expect(t.url).toBe('https://huggingface.co/u/r/resolve/main/setting.safetensors')
+    dl.cancelDownload(t.id)
+
+    settings.saveSettings({ hfMirror: true })
+    const t2 = await dl.startDownload({ url: 'https://huggingface.co/u/r/resolve/main/setting2.safetensors' })
+    expect(t2.url).toBe('https://hf-mirror.com/u/r/resolve/main/setting2.safetensors')
+    dl.cancelDownload(t2.id)
+  })
+
   it('HTTP 404 任务转 error 并带状态码', async () => {
     handler = (_req, res) => {
       res.writeHead(404)
@@ -202,6 +223,41 @@ describe('暂停 / 继续 / 取消（慢速服务器）', () => {
     expect(firstTask().total).toBe(1024 * 1024)
     expect(fs.statSync(t.dest).size).toBe(1024 * 1024)
     void before
+  })
+
+  it('全部暂停：所有下载中的任务都变 paused', async () => {
+    const t1 = await dl.startDownload({ url: `http://127.0.0.1:${port}/big/a.safetensors` })
+    const t2 = await dl.startDownload({ url: `http://127.0.0.1:${port}/big/b.safetensors` })
+    await waitFor(() => dl.listDownloads().every(x => x.received > 0))
+    dl.pauseAllDownloads()
+    await waitFor(() => dl.listDownloads().every(x => x.status === 'paused'))
+    expect(dl.listDownloads().map(x => x.id).sort()).toEqual([t1.id, t2.id].sort())
+    expect(fs.existsSync(t1.dest + '.downloading')).toBe(true) // 保留断点，未删临时文件
+    expect(fs.existsSync(t2.dest + '.downloading')).toBe(true)
+  })
+
+  it('全部开始：继续已暂停的任务并下完', async () => {
+    const t1 = await dl.startDownload({ url: `http://127.0.0.1:${port}/big/a.safetensors` })
+    const t2 = await dl.startDownload({ url: `http://127.0.0.1:${port}/big/b.safetensors` })
+    await waitFor(() => dl.listDownloads().every(x => x.received > 0))
+    dl.pauseAllDownloads()
+    await waitFor(() => dl.listDownloads().every(x => x.status === 'paused'))
+
+    dl.resumeAllDownloads()
+    await waitFor(() => dl.listDownloads().every(x => x.status === 'completed'), 20000)
+    expect(fs.statSync(t1.dest).size).toBe(1024 * 1024)
+    expect(fs.statSync(t2.dest).size).toBe(1024 * 1024)
+  })
+
+  it('全部停止：清空任务并删除未完成的临时文件', async () => {
+    const t1 = await dl.startDownload({ url: `http://127.0.0.1:${port}/big/a.safetensors` })
+    const t2 = await dl.startDownload({ url: `http://127.0.0.1:${port}/big/b.safetensors` })
+    await waitFor(() => dl.listDownloads().every(x => x.received > 0))
+    dl.cancelAllDownloads()
+    await waitFor(() => dl.listDownloads().length === 0)
+    expect(fs.existsSync(t1.dest + '.downloading')).toBe(false)
+    expect(fs.existsSync(t2.dest + '.downloading')).toBe(false)
+    expect(fs.existsSync(t1.dest)).toBe(false)
   })
 })
 

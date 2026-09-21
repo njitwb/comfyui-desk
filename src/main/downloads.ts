@@ -4,7 +4,7 @@ import path from 'node:path'
 import http from 'node:http'
 import https from 'node:https'
 import crypto from 'node:crypto'
-import { paths } from './settings'
+import { paths, loadSettings } from './settings'
 import { comfy } from './process'
 import { modelCategories } from './models'
 import { t as tr } from './i18n'
@@ -104,12 +104,18 @@ function restore(): void {
   if (states.size) emitNow()
 }
 
-/** 规范化下载地址：HF 镜像切换 + 网页链接（/blob/）转直链（/resolve/），避免把 HTML 页面存成模型 */
-function normalizeUrl(input: string): string {
+/** HuggingFace 主机：开启 HF 镜像走国内站点，否则走官方站 */
+function hfHost(useHfMirror: boolean): string {
+  return useHfMirror ? 'hf-mirror.com' : 'huggingface.co'
+}
+
+/** 规范化下载地址：HF 主机按镜像开关切换 + 网页链接（/blob/）转直链（/resolve/），避免把 HTML 页面存成模型 */
+function normalizeUrl(input: string, useHfMirror: boolean): string {
   let u = input.trim()
-  // HuggingFace 绕国内墙：页面链接 /blob/ 转直链 /resolve/（先转镜像再处理，两个 host 统一走一遍）
-  u = u.replace(/^(https?:\/\/)(?:huggingface\.co|hf-mirror\.com)(\/[^/]+\/[^/]+)\/blob\//i, '$1hf-mirror.com$2/resolve/')
-  u = u.replace(/^(https?:\/\/)huggingface\.co/i, '$1hf-mirror.com')
+  // 页面链接 /blob/ 转直链 /resolve/（主机先保留，下一步再按开关统一）
+  u = u.replace(/^(https?:\/\/)((?:huggingface\.co|hf-mirror\.com)\/[^/]+\/[^/]+\/)blob\//i, '$1$2resolve/')
+  // 统一到当前所选主机：跟随「HF 镜像」开关落到 hf-mirror.com 或 huggingface.co
+  u = u.replace(/^(https?:\/\/)(?:huggingface\.co|hf-mirror\.com)(?=\/)/i, `$1${hfHost(useHfMirror)}`)
   // ModelScope 页面链接 → 直链
   u = u.replace(/^(https?:\/\/)(www\.)?modelscope\.cn(\/models\/[^/]+\/[^/]+)\/blob\//i, '$1$2modelscope.cn$3/resolve/')
   return u
@@ -265,7 +271,9 @@ export async function startDownload(opts: {
   filename?: string
   useHfMirror?: boolean
 }): Promise<DownloadTask> {
-  const url = normalizeUrl(opts.url)
+  // HF 源开关：调用方未显式指定时跟随「设置」里的 hfMirror
+  const useHfMirror = opts.useHfMirror ?? loadSettings().hfMirror
+  const url = normalizeUrl(opts.url, useHfMirror)
   const rawName = (opts.filename || '').trim() || guessName(url)
   const filename = path.basename(rawName || `download-${Date.now()}.bin`) // 防路径穿越
   const cats = modelCategories()
@@ -294,7 +302,7 @@ export async function startDownload(opts: {
   states.set(dest, st)
   comfy.pushLog(
     'sys',
-    opts.useHfMirror
+    useHfMirror
       ? tr('m.dl.logStartMirror', { filename, category })
       : tr('m.dl.logStart', { filename, category })
   )
@@ -339,4 +347,19 @@ export function cancelDownload(id: string): void {
 function find(id: string): TaskState | undefined {
   for (const st of states.values()) if (st.task.id === id) return st
   return undefined
+}
+
+/** 全部暂停：暂停所有正在下载的任务 */
+export function pauseAllDownloads(): void {
+  for (const st of [...states.values()]) pauseDownload(st.task.id)
+}
+
+/** 全部开始：继续所有已暂停的任务，并重试失败的任务 */
+export function resumeAllDownloads(): void {
+  for (const st of [...states.values()]) resumeDownload(st.task.id)
+}
+
+/** 全部停止：取消所有任务并清理未完成的临时文件（已完成的仅从列表移除） */
+export function cancelAllDownloads(): void {
+  for (const st of [...states.values()]) cancelDownload(st.task.id)
 }

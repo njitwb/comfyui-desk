@@ -1,8 +1,8 @@
-import { ipcMain, dialog, shell, BrowserWindow, app, session, nativeTheme } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, app, session, nativeTheme, clipboard } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { IPC } from '../shared/api'
-import type { GpuInfo, InstallOptions, ProgressEvent } from '../shared/api'
+import type { GpuInfo, InstallOptions, ModelSource, ProgressEvent } from '../shared/api'
 import { loadSettings, saveSettings, paths, isInstalled, installedVersion, settingsPath, Settings, defaultRoot } from './settings'
 import { setMainLocale, t } from './i18n'
 import { detectGpu } from './gpu'
@@ -10,8 +10,11 @@ import { listPythons } from './python'
 import { comfy } from './process'
 import { syncThemeToComfy, watchComfyTheme } from './comfy-theme'
 import { installComfyUI, updateComfyUI, listComfyVersions, listTorchIndexes, listTorchVariants, installTorch, checkComfyUpdate } from './installer'
-import { scanModels, deleteModel, modelCategories } from './models'
-import { initDownloads, listDownloads, startDownload, pauseDownload, resumeDownload, cancelDownload, inferCategory } from './downloads'
+import { scanModels, deleteModel, moveModel, modelCategories, searchOnlineModels, listOnlineModelFiles } from './models'
+import {
+  initDownloads, listDownloads, startDownload, pauseDownload, resumeDownload, cancelDownload,
+  pauseAllDownloads, resumeAllDownloads, cancelAllDownloads, inferCategory
+} from './downloads'
 import { listNodes, installNode, updateNode, updateAllNodes, removeNode } from './nodes'
 import { scanWorkflows, workflowDir, importWorkflow, queueWorkflow, deleteWorkflow } from './workflows'
 import { terminal } from './terminal'
@@ -127,6 +130,9 @@ export function registerIpc(): void {
   })
   ipcMain.handle(IPC.openPath, (_e, p: string) => shell.openPath(p))
   ipcMain.handle(IPC.revealFile, (_e, p: string) => shell.showItemInFolder(p))
+  // 终端复制粘贴：xterm 只认原生 copy/paste 事件，由主进程直接读写系统剪贴板
+  ipcMain.handle(IPC.clipboardRead, () => clipboard.readText())
+  ipcMain.handle(IPC.clipboardWrite, (_e, text: string) => clipboard.writeText(String(text ?? '')))
   ipcMain.handle(IPC.logInfo, (_e, msg: string) => comfy.pushLog('sys', t('m.ipc.log.ui', { message: String(msg) })))
   ipcMain.handle(IPC.openExternal, (_e, url: string) => shell.openExternal(url))
   ipcMain.handle(IPC.winFullScreen, (e, flag: boolean) => {
@@ -221,6 +227,24 @@ export function registerIpc(): void {
     deleteModel(p)
     comfy.pushLog('sys', t('m.ipc.log.modelDeleted', { path: p }))
   })
+  ipcMain.handle(IPC.modelsMove, (_e, p: string, category: string) => {
+    const dest = moveModel(p, category)
+    comfy.pushLog('sys', t('m.ipc.log.modelMoved', { path: p, dest }))
+    return dest
+  })
+  // 在线搜索：HF 按「HF 镜像」开关切站点（hf-mirror.com / huggingface.co）；魔搭国内直连
+  ipcMain.handle(IPC.modelsOnlineSearch, async (_e, source: ModelSource, query: string, useMirror: boolean) => {
+    const r = await searchOnlineModels(source, query, useMirror)
+    comfy.pushLog('sys', t('m.dl.logOnlineSearch', {
+      source: source === 'ms' ? 'ModelScope' : `HuggingFace (${useMirror ? 'hf-mirror.com' : 'huggingface.co'})`,
+      query: r.query,
+      count: r.models.length
+    }))
+    return r
+  })
+  ipcMain.handle(IPC.modelsOnlineFiles, (_e, source: ModelSource, repoId: string, revision: string, useMirror: boolean) =>
+    listOnlineModelFiles(source, repoId, revision, useMirror)
+  )
 
   // ---- downloads（下载管理器）----
   initDownloads((list) => send(IPC.downloadsEvent, list))
@@ -229,6 +253,9 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.downloadsPause, (_e, id: string) => pauseDownload(id))
   ipcMain.handle(IPC.downloadsResume, (_e, id: string) => resumeDownload(id))
   ipcMain.handle(IPC.downloadsCancel, (_e, id: string) => cancelDownload(id))
+  ipcMain.handle(IPC.downloadsPauseAll, () => pauseAllDownloads())
+  ipcMain.handle(IPC.downloadsResumeAll, () => resumeAllDownloads())
+  ipcMain.handle(IPC.downloadsCancelAll, () => cancelAllDownloads())
 
   // 兜底：webview 内若触发了浏览器式下载（锚点 download 等），接管进下载管理器
   session.defaultSession.on('will-download', (event, item) => {
@@ -237,7 +264,7 @@ export function registerIpc(): void {
     event.preventDefault()
     const url = item.getURL()
     comfy.pushLog('sys', t('m.ipc.log.modelDownloadTaken', { name, url }))
-    void startDownload({ url, filename: name, category: inferCategory(name, url), useHfMirror: true })
+    void startDownload({ url, filename: name, category: inferCategory(name, url) })
     send(IPC.downloadTaken, { filename: name })
   })
 

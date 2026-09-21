@@ -77,7 +77,7 @@ function takeDownload(dlUrl: string, filename?: string, category?: string, sourc
     })
   )
   void api
-    .startDownload({ url: dlUrl, filename, category, useHfMirror: true })
+    .startDownload({ url: dlUrl, filename, category })
     .then(() => emit('nav', 'models'))
     .catch((err: unknown) => toast(t('wb.dm.addFailed', { msg: (err as Error).message || String(err) })))
 }

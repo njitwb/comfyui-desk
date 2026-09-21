@@ -187,7 +187,7 @@ export default {
   'settings.paths.title': ['模型与路径', 'Models & paths'],
   'settings.paths.modelPath': ['模型下载路径（独立目录，留空则使用 ComfyUI 默认 models 目录）', 'Model download path (separate directory; leave empty to use the ComfyUI default models directory)'],
   'settings.paths.installPath': ['安装路径', 'Install path'],
-  'settings.paths.hfMirror': ['模型下载默认启用 HF 镜像（hf-mirror.com）', 'Use the HF mirror (hf-mirror.com) by default for model downloads'],
+  'settings.paths.hfMirror': ['模型搜索与下载启用 HF 国内镜像（hf-mirror.com），关闭则走 huggingface.co 官方站', 'Search and download models via the HF mirror (hf-mirror.com); turn off to use the official huggingface.co'],
 
   /** 环境卡片 */
   'settings.env.title': ['环境', 'Environment'],

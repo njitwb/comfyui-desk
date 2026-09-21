@@ -15,6 +15,8 @@ const api: import('../shared/api').LauncherApi = {
   pickDir: () => ipcRenderer.invoke(IPC.pickDir),
   openPath: (p: string) => ipcRenderer.invoke(IPC.openPath, p),
   revealFile: (p: string) => ipcRenderer.invoke(IPC.revealFile, p),
+  clipboardRead: () => ipcRenderer.invoke(IPC.clipboardRead),
+  clipboardWrite: (text: string) => ipcRenderer.invoke(IPC.clipboardWrite, text),
   openExternal: (url: string) => ipcRenderer.invoke(IPC.openExternal, url),
   setFullScreen: (flag: boolean) => ipcRenderer.invoke(IPC.winFullScreen, flag),
   detectGpu: () => ipcRenderer.invoke(IPC.gpuDetect),
@@ -48,12 +50,24 @@ const api: import('../shared/api').LauncherApi = {
   // models
   scanModels: () => ipcRenderer.invoke(IPC.modelsScan),
   deleteModel: (p: string) => ipcRenderer.invoke(IPC.modelsDelete, p),
+  moveModel: (p: string, category: string) => ipcRenderer.invoke(IPC.modelsMove, p, category),
+  searchOnlineModels: (source: import('../shared/api').ModelSource, query: string, useMirror: boolean) =>
+    ipcRenderer.invoke(IPC.modelsOnlineSearch, source, query, useMirror),
+  listOnlineModelFiles: (
+    source: import('../shared/api').ModelSource,
+    repoId: string,
+    revision: string,
+    useMirror: boolean
+  ) => ipcRenderer.invoke(IPC.modelsOnlineFiles, source, repoId, revision, useMirror),
   // downloads
   listDownloads: () => ipcRenderer.invoke(IPC.downloadsList),
   startDownload: (o: import('../shared/api').DownloadStart) => ipcRenderer.invoke(IPC.downloadsStart, o),
   pauseDownload: (id: string) => ipcRenderer.invoke(IPC.downloadsPause, id),
   resumeDownload: (id: string) => ipcRenderer.invoke(IPC.downloadsResume, id),
   cancelDownload: (id: string) => ipcRenderer.invoke(IPC.downloadsCancel, id),
+  pauseAllDownloads: () => ipcRenderer.invoke(IPC.downloadsPauseAll),
+  resumeAllDownloads: () => ipcRenderer.invoke(IPC.downloadsResumeAll),
+  cancelAllDownloads: () => ipcRenderer.invoke(IPC.downloadsCancelAll),
   onDownloads: (cb: (list: import('../shared/api').DownloadTask[]) => void) => on(IPC.downloadsEvent, cb),
   onDownloadTaken: (cb: (info: { filename: string }) => void) => on(IPC.downloadTaken, cb),
   onNavModelDownload: (cb: (info: { url: string }) => void) => on(IPC.navModelDownload, cb),

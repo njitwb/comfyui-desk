@@ -21,6 +21,7 @@ export default {
   'm.ipc.stage.done': ['完成', 'Done'],
   'm.ipc.torchSwitched': ['Torch 切换完成', 'Torch switched'],
   'm.ipc.log.modelDeleted': ['[模型] 已删除 {path}', '[Models] Deleted {path}'],
+  'm.ipc.log.modelMoved': ['[模型] 已移动 {path} → {dest}', '[Models] Moved {path} → {dest}'],
   'm.ipc.log.modelDownloadTaken': [
     '[模型] 接管界面内下载：{name} url={url}',
     '[Models] Intercepted in-app download: {name} url={url}'

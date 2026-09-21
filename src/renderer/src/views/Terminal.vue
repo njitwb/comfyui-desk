@@ -66,6 +66,59 @@ async function openSession() {
   alive = true
 }
 
+/** 复制选区到系统剪贴板；无选区返回 false（按键继续按原义交给终端） */
+function copySelection(): boolean {
+  if (!term?.hasSelection()) return false
+  void api.clipboardWrite(term.getSelection())
+  term.clearSelection() // 清选区，便于下次 Ctrl+C 正常中断
+  return true
+}
+
+/** 粘贴系统剪贴板内容（term.paste 会做换行归一与 bracketed paste） */
+async function pasteClipboard(): Promise<void> {
+  const text = await api.clipboardRead()
+  if (text) term?.paste(text)
+}
+
+/**
+ * 复制粘贴接管说明：xterm 只认原生 copy/paste 事件，而终端文本不可选中（xterm 自身 user-select:none），
+ * 原生 copy 取不到选区内容 —— 所以复制走 xterm 选区模型 + 主进程剪贴板；粘贴同理走 IPC，
+ * 并用 blockNativePaste 屏蔽原生 paste，避免同一次按键被送两遍。
+ *
+ * 快捷键：Ctrl+Shift+C / Ctrl+Insert 复制；Ctrl+C 有选中时复制、无选中仍作中断；Ctrl+V（含 Ctrl+Shift+V）/ Shift+Insert 粘贴。
+ */
+function onKey(ev: KeyboardEvent): boolean {
+  if (ev.type !== 'keydown') return true // xterm 也会在 keypress / keyup 回调
+  const key = ev.key.toLowerCase()
+  if (ev.ctrlKey) {
+    if ((ev.shiftKey && key === 'c') || key === 'insert') {
+      copySelection()
+      return false
+    }
+    if (key === 'c') return !copySelection()
+    if (key === 'v') {
+      void pasteClipboard()
+      return false
+    }
+    return true
+  }
+  if (ev.shiftKey && key === 'insert') {
+    void pasteClipboard()
+    return false
+  }
+  return true
+}
+
+/** 拦截原生 paste（捕获阶段，先于 xterm 的 textarea 监听），避免与剪贴板 IPC 重复粘贴 */
+function blockNativePaste(ev: ClipboardEvent): void {
+  ev.stopPropagation()
+}
+
+/** 右键：有选中复制，否则粘贴（Windows 终端习惯） */
+function onContextMenu(): void {
+  if (!copySelection()) void pasteClipboard()
+}
+
 onMounted(async () => {
   term = new Terminal({
     cursorBlink: true,
@@ -74,6 +127,7 @@ onMounted(async () => {
     theme: termTheme()
   })
   term.loadAddon(fit)
+  term.attachCustomKeyEventHandler(onKey)
   term.open(host.value!)
   fit.fit()
 
@@ -125,7 +179,13 @@ onUnmounted(() => {
     <div class="page-desc">
       {{ shellLabel ? t('term.desc', { shell: shellLabel }) : t('term.descNoShell') }}
     </div>
-    <div ref="host" class="card term-host"></div>
+    <div class="page-desc muted term-hint">{{ t('term.clipboardHint') }}</div>
+    <div
+      ref="host"
+      class="card term-host"
+      @paste.capture="blockNativePaste"
+      @contextmenu.prevent="onContextMenu"
+    ></div>
   </div>
 </template>
 
@@ -141,6 +201,9 @@ onUnmounted(() => {
   min-height: 0;
   padding: 8px;
   overflow: hidden;
+}
+.term-hint {
+  margin: -12px 0 12px;
 }
 :deep(.xterm) {
   height: 100%;

@@ -36,5 +36,8 @@ export default {
   'm.wf.unknownFormat': ['无法识别的工作流格式', 'Unrecognized workflow format'],
   'm.wf.submitFailed': ['提交失败 HTTP {status}：{detail}', 'Submission failed (HTTP {status}): {detail}'],
 
-  'm.models.invalidPath': ['非法路径', 'Invalid path']
+  'm.models.invalidPath': ['非法路径', 'Invalid path'],
+  'm.models.errBadCategory': ['未知的模型类别：{category}', 'Unknown model category: {category}'],
+  'm.models.errMoveMissing': ['源文件不存在，可能已被移动或删除', 'The source file does not exist; it may have been moved or deleted'],
+  'm.models.errMoveExists': ['{category} 目录下已存在同名文件 {name}，请先处理后再移动', '{category} already contains a file named {name}; please handle it before moving']
 } as const satisfies MessageTable
