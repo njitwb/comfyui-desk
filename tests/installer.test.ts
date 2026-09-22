@@ -144,6 +144,43 @@ describe('installTorch 参数校验', () => {
   })
 })
 
+describe('installRequirements 镜像缺包回退', () => {
+  const writeReq = () => {
+    const dir = settings.paths().comfy
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'requirements.txt'), 'comfyui-workflow-templates-media-assets-02==0.1.3\n')
+  }
+  const indexOf = (args: string[]) => (args.includes('--index-url') ? args[args.indexOf('--index-url') + 1] : '')
+
+  it('镜像报缺包时改用官方 PyPI 重跑', async () => {
+    writeReq()
+    settings.saveSettings({ pipMirror: 'tuna' })
+    const calls: string[][] = []
+    h.runMock.mockImplementation(async (_cmd, args) => {
+      calls.push(args)
+      if (calls.length === 1) {
+        return { code: 1, out: '', err: 'ERROR: No matching distribution found for comfyui-workflow-templates-media-assets-02==0.1.3' }
+      }
+      return { code: 0, out: '', err: '' }
+    })
+    await installer.installRequirements(() => {})
+    expect(indexOf(calls[0])).toBe('https://pypi.tuna.tsinghua.edu.cn/simple')
+    expect(indexOf(calls[1])).toBe('')
+  })
+
+  it('镜像失败但不是缺包（如网络错误）时不重跑', async () => {
+    writeReq()
+    settings.saveSettings({ pipMirror: 'tuna' })
+    const calls: string[][] = []
+    h.runMock.mockImplementation(async (_cmd, args) => {
+      calls.push(args)
+      return { code: 1, out: '', err: 'WARNING: Retrying after connection broken' }
+    })
+    await expect(installer.installRequirements(() => {})).rejects.toThrow('依赖安装失败')
+    expect(calls).toHaveLength(1)
+  })
+})
+
 describe('installComfyUI 前置校验', () => {
   it('未选择安装路径时报错', async () => {
     settings.saveSettings({ installPath: '' })

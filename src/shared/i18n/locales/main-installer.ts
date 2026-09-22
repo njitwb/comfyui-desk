@@ -18,6 +18,8 @@ export default {
     'Repository already exists, switching to the target version...'
   ],
   'm.installer.switchVersionFailed': ['切换版本失败: {detail}', 'Failed to switch version: {detail}'],
+  'm.installer.switchRemote': ['检测到源码地址变更，切换远程仓库...', 'Source changed, switching the remote repository...'],
+  'm.installer.switchRemoteFailed': ['切换远程仓库失败: {detail}', 'Failed to switch the remote repository: {detail}'],
   'm.installer.cloneFrom': ['从 {source} 克隆 {version} ...', 'Cloning {version} from {source} ...'],
   'm.installer.cloneFallback': [
     'git 克隆失败，改用下载压缩包...',
@@ -69,6 +71,10 @@ export default {
     'PyTorch installation failed (tried the official source and the Aliyun mirror): {detail}'
   ],
   'm.installer.installDeps': ['安装 ComfyUI 依赖...', 'Installing ComfyUI dependencies...'],
+  'm.installer.retryOfficialPyPI': [
+    '镜像缺少部分依赖包（同步延迟），改用官方 PyPI 重试...',
+    'The mirror is missing some packages (sync delay), retrying with the official PyPI...'
+  ],
   'm.installer.depsInstallFailed': ['依赖安装失败', 'Failed to install dependencies'],
   'm.installer.installManagerPip': [
     '安装/升级 ComfyUI-Manager(官方 pip 包)...',

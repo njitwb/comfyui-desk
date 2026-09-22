@@ -10,13 +10,13 @@ export type AdvArgs = Record<string, unknown>
 export const ADV_KEYS = [
   'listen', 'enableCors', 'compressResponse', 'maxUploadSize',
   'autoLaunch',
-  'cudaDevice', 'directml', 'cudaMalloc',
-  'forceFp', 'unetPrecision', 'vaePrecision', 'textEncPrecision', 'fp16Intermediates',
+  'cudaDevice', 'defaultDevice', 'directml', 'oneapiDeviceSelector', 'cudaMalloc',
+  'forceFp', 'unetPrecision', 'vaePrecision', 'textEncPrecision', 'fp16Intermediates', 'forceChannelsLast', 'supportsFp8Compute',
   'previewMethod', 'previewSize',
-  'cache', 'cacheLruN',
+  'cache', 'cacheLruN', 'cacheRam',
   'attention', 'disableXformers', 'upcastAttention',
-  'vramMode', 'reserveVram', 'asyncOffload', 'dynamicVram', 'fastDisk', 'disableSmartMemory', 'disablePinnedMemory', 'mmap',
-  'fast', 'deterministic', 'hashFunction',
+  'vramMode', 'reserveVram', 'vramHeadroom', 'asyncOffload', 'dynamicVram', 'fastDisk', 'disableSmartMemory', 'disablePinnedMemory', 'mmap', 'disableNvmlPressure', 'disableCudaGraphs', 'forceNonBlocking',
+  'tritonBackend', 'fast', 'deterministic', 'hashFunction',
   'enableManager', 'disableManagerUi', 'managerLegacyUi',
   'disableAllCustomNodes', 'disableApiNodes', 'disableMetadata', 'multiUser',
   'verbose', 'logStdout', 'dontPrintServer'
@@ -29,6 +29,13 @@ function str(v: unknown): string {
 function num(v: unknown): number | null {
   const n = typeof v === 'number' ? v : Number(str(v))
   return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** 允许 0 的整数（如 --default-device 0 表示 0 号卡） */
+function intVal(v: unknown): number | null {
+  if (v === '' || v === null || v === undefined) return null
+  const n = typeof v === 'number' ? v : Number(str(v))
+  return Number.isInteger(n) && n >= 0 ? n : null
 }
 
 /** 将高级选项展开为 main.py 的命令行参数（顺序与文档分组一致） */
@@ -56,6 +63,10 @@ export function buildAdvancedArgs(a: AdvArgs | null | undefined): string[] {
   // ---- 设备与 CUDA ----
   const cudaDevice = str(a.cudaDevice)
   if (cudaDevice) out.push('--cuda-device', cudaDevice)
+  const defaultDevice = intVal(a.defaultDevice)
+  if (defaultDevice !== null) out.push('--default-device', String(defaultDevice))
+  const oneapiDevice = str(a.oneapiDeviceSelector)
+  if (oneapiDevice) out.push('--oneapi-device-selector', oneapiDevice)
   flag('directml', '--directml')
   tri('cudaMalloc', '--cuda-malloc', '--disable-cuda-malloc')
 
@@ -69,6 +80,8 @@ export function buildAdvancedArgs(a: AdvArgs | null | undefined): string[] {
   const textEnc = str(a.textEncPrecision)
   if (textEnc) out.push(`--${textEnc}-text-enc`)
   flag('fp16Intermediates', '--fp16-intermediates')
+  flag('forceChannelsLast', '--force-channels-last')
+  flag('supportsFp8Compute', '--supports-fp8-compute')
 
   // ---- 预览 ----
   const previewMethod = str(a.previewMethod)
@@ -79,15 +92,21 @@ export function buildAdvancedArgs(a: AdvArgs | null | undefined): string[] {
   // ---- 缓存（互斥） ----
   if (a.cache === 'none') out.push('--cache-none')
   else if (a.cache === 'classic') out.push('--cache-classic')
+  else if (a.cache === 'high-ram') out.push('--high-ram')
   else if (a.cache === 'lru') {
     const n = num(a.cacheLruN)
     out.push('--cache-lru', String(n ?? 3))
+  } else {
+    // RAM 压力缓存（默认模式）：填了阈值才生成 --cache-ram
+    const ram = num(a.cacheRam)
+    if (ram) out.push('--cache-ram', String(ram))
   }
 
   // ---- 注意力机制（互斥） ----
   const attention = str(a.attention)
   if (attention === 'sage') out.push('--use-sage-attention')
   else if (attention === 'flash') out.push('--use-flash-attention')
+  else if (attention === 'ck') out.push('--use-ck-attention')
   else if (attention) out.push(`--use-${attention}-cross-attention`)
   flag('disableXformers', '--disable-xformers')
   tri('upcastAttention', '--force-upcast-attention', '--dont-upcast-attention')
@@ -97,14 +116,20 @@ export function buildAdvancedArgs(a: AdvArgs | null | undefined): string[] {
   if (vramMode) out.push(`--${vramMode}`)
   const reserveVram = num(a.reserveVram)
   if (reserveVram) out.push('--reserve-vram', String(reserveVram))
+  const vramHeadroom = num(a.vramHeadroom)
+  if (vramHeadroom) out.push('--vram-headroom', String(vramHeadroom))
   tri('asyncOffload', '--async-offload', '--disable-async-offload')
   tri('dynamicVram', '--enable-dynamic-vram', '--disable-dynamic-vram')
   flag('fastDisk', '--fast-disk')
   flag('disableSmartMemory', '--disable-smart-memory')
   flag('disablePinnedMemory', '--disable-pinned-memory')
   tri('mmap', '--mmap-torch-files', '--disable-mmap')
+  flag('disableNvmlPressure', '--disable-nvml-pressure')
+  flag('disableCudaGraphs', '--disable-cuda-graphs')
+  flag('forceNonBlocking', '--force-non-blocking')
 
   // ---- 性能与调试 ----
+  tri('tritonBackend', '--enable-triton-backend', '--disable-triton-backend')
   flag('fast', '--fast')
   flag('deterministic', '--deterministic')
   const hashFn = str(a.hashFunction)
@@ -162,6 +187,10 @@ export function parseAdvancedArgs(tokens: string[]): AdvArgs {
   // ---- 设备与 CUDA ----
   const cudaDevice = val('--cuda-device')
   if (cudaDevice) out.cudaDevice = cudaDevice
+  const defaultDevice = numVal('--default-device')
+  if (defaultDevice !== null) out.defaultDevice = defaultDevice
+  const oneapiDevice = val('--oneapi-device-selector')
+  if (oneapiDevice) out.oneapiDeviceSelector = oneapiDevice
   if (has('--directml')) out.directml = true
   if (has('--cuda-malloc')) out.cudaMalloc = 'on'
   else if (has('--disable-cuda-malloc')) out.cudaMalloc = 'off'
@@ -179,6 +208,8 @@ export function parseAdvancedArgs(tokens: string[]): AdvArgs {
     if (has(`--${p}-text-enc`)) out.textEncPrecision = p
   }
   if (has('--fp16-intermediates')) out.fp16Intermediates = true
+  if (has('--force-channels-last')) out.forceChannelsLast = true
+  if (has('--supports-fp8-compute')) out.supportsFp8Compute = true
 
   // ---- 预览 ----
   const previewMethod = val('--preview-method')
@@ -189,15 +220,21 @@ export function parseAdvancedArgs(tokens: string[]): AdvArgs {
   // ---- 缓存 ----
   if (has('--cache-none')) out.cache = 'none'
   else if (has('--cache-classic')) out.cache = 'classic'
+  else if (has('--high-ram')) out.cache = 'high-ram'
   else if (has('--cache-lru')) {
     out.cache = 'lru'
     const n = numVal('--cache-lru')
     if (n !== null) out.cacheLruN = n
+  } else {
+    // --cache-ram 属于默认（RAM 压力）模式，只还原阈值
+    const n = numVal('--cache-ram')
+    if (n !== null) out.cacheRam = n
   }
 
   // ---- 注意力机制 ----
   if (has('--use-sage-attention')) out.attention = 'sage'
   else if (has('--use-flash-attention')) out.attention = 'flash'
+  else if (has('--use-ck-attention')) out.attention = 'ck'
   else {
     const m = tokens.find(t => /^--use-.+-cross-attention$/.test(t))?.match(/^--use-(.+)-cross-attention$/)
     if (m) out.attention = m[1]
@@ -215,6 +252,8 @@ export function parseAdvancedArgs(tokens: string[]): AdvArgs {
   }
   const reserveVram = numVal('--reserve-vram')
   if (reserveVram !== null) out.reserveVram = reserveVram
+  const vramHeadroom = numVal('--vram-headroom')
+  if (vramHeadroom !== null) out.vramHeadroom = vramHeadroom
   if (has('--async-offload')) out.asyncOffload = 'on'
   else if (has('--disable-async-offload')) out.asyncOffload = 'off'
   if (has('--enable-dynamic-vram')) out.dynamicVram = 'on'
@@ -224,8 +263,13 @@ export function parseAdvancedArgs(tokens: string[]): AdvArgs {
   if (has('--disable-pinned-memory')) out.disablePinnedMemory = true
   if (has('--mmap-torch-files')) out.mmap = 'on'
   else if (has('--disable-mmap')) out.mmap = 'off'
+  if (has('--disable-nvml-pressure')) out.disableNvmlPressure = true
+  if (has('--disable-cuda-graphs')) out.disableCudaGraphs = true
+  if (has('--force-non-blocking')) out.forceNonBlocking = true
 
   // ---- 性能与调试 ----
+  if (has('--enable-triton-backend')) out.tritonBackend = 'on'
+  else if (has('--disable-triton-backend')) out.tritonBackend = 'off'
   if (has('--fast')) out.fast = true
   if (has('--deterministic')) out.deterministic = true
   const hashFn = val('--default-hashing-function')

@@ -132,6 +132,73 @@ describe('runDiagnostics', () => {
     const items = await diag.runDiagnostics()
     expect(items.find(i => i.id === 'git')!.status).toBe('warn')
   })
+
+  it('requirements.txt 里的包没装（如镜像缺包导致安装中断）时报 fail', async () => {
+    fakeComfy()
+    fakeVenv()
+    fs.writeFileSync(
+      path.join(settings.paths().comfy, 'requirements.txt'),
+      ['comfyui-frontend-package==1.52.7', 'comfyui-workflow-templates==0.11.60', 'einops', 'torch'].join('\n')
+    )
+    h.runMock.mockImplementation(async (_cmd, args) => {
+      const joined = args.join(' ')
+      if (joined.includes('pip --version')) return { code: 0, out: 'pip 24.2', err: '' }
+      if (joined.includes('import torch')) return { code: 0, out: '2.4.1\nTrue\n', err: '' }
+      if (joined.includes('pip list'))
+        return {
+          code: 0,
+          out: JSON.stringify([{ name: 'comfyui-frontend-package', version: '1.52.7' }, { name: 'torch', version: '2.4.1' }]),
+          err: ''
+        }
+      // 镜像缺包时 pip check 依然报“无冲突”，正是此前漏诊的原因
+      if (joined.includes('pip check')) return { code: 0, out: 'No broken requirements found.\n', err: '' }
+      return { code: 0, out: '', err: '' }
+    })
+    const items = await diag.runDiagnostics()
+    const deps = items.find(i => i.id === 'deps')!
+    expect(deps.status).toBe('fail')
+    expect(deps.message).toContain('comfyui-workflow-templates')
+    expect(deps.message).toContain('einops')
+  })
+
+  it('== 固定版本与已装版本不符时给 warn', async () => {
+    fakeComfy()
+    fakeVenv()
+    fs.writeFileSync(path.join(settings.paths().comfy, 'requirements.txt'), 'comfyui-workflow-templates==0.11.60\n')
+    h.runMock.mockImplementation(async (_cmd, args) => {
+      const joined = args.join(' ')
+      if (joined.includes('pip --version')) return { code: 0, out: 'pip 24.2', err: '' }
+      if (joined.includes('import torch')) return { code: 0, out: '2.4.1\nTrue\n', err: '' }
+      if (joined.includes('pip list'))
+        return { code: 0, out: JSON.stringify([{ name: 'ComfyUI_Workflow.Templates', version: '0.11.59' }]), err: '' }
+      if (joined.includes('pip check')) return { code: 0, out: '', err: '' }
+      return { code: 0, out: '', err: '' }
+    })
+    const deps = (await diag.runDiagnostics()).find(i => i.id === 'deps')!
+    expect(deps.status).toBe('warn')
+    expect(deps.message).toContain('0.11.60≠0.11.59')
+  })
+
+  it('requirements.txt 解析：跳过指令行/条件行/注释，忽略 specifier', () => {
+    const f = path.join(userData, 'req.txt')
+    fs.writeFileSync(
+      f,
+      [
+        '# 注释',
+        '--extra-index-url https://example.com/simple',
+        '-r other.txt',
+        'numpy>=1.25.0',
+        'comfyui-frontend-package==1.52.7  # 行尾注释',
+        'pywin32; sys_platform == "win32"',
+        'Pillow[extra]==10.0.0'
+      ].join('\n')
+    )
+    expect(diag.parseRequirements(f)).toEqual([
+      { name: 'numpy', version: '' },
+      { name: 'comfyui-frontend-package', version: '1.52.7' },
+      { name: 'Pillow', version: '10.0.0' }
+    ])
+  })
 })
 
 describe('repairEnv', () => {

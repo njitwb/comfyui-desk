@@ -90,7 +90,7 @@ export async function pip(
     onData?: (s: string) => void
     timeoutMs?: number
   } = {}
-): Promise<{ code: number }> {
+): Promise<{ code: number; out: string }> {
   const p = paths()
   const final = ['-m', 'pip', ...args]
   if (opts.indexUrl) final.push('--index-url', opts.indexUrl)
@@ -103,7 +103,8 @@ export async function pip(
     // 强制 UTF-8，避免 Windows GBK 下报错信息乱码
     env: { PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
   })
-  return { code: r.code }
+  // out 合并 stderr：pip 的报错信息（如 No matching distribution found）写在 stderr 里
+  return { code: r.code, out: r.out + r.err }
 }
 
 /** 终端 / 子进程环境：venv Scripts 与便携 git 置于 PATH 前部 */

@@ -44,9 +44,46 @@ describe('buildAdvancedArgs', () => {
     expect(buildAdvancedArgs({ cache: 'lru', cacheLruN: 8 })).toEqual(['--cache-lru', '8'])
   })
 
-  it('注意力组：sage/flash 专属 flag，其余走 cross-attention', () => {
+  it('缓存组：high-ram 与默认 RAM 模式的阈值', () => {
+    expect(buildAdvancedArgs({ cache: 'high-ram' })).toEqual(['--high-ram'])
+    expect(buildAdvancedArgs({ cacheRam: 12 })).toEqual(['--cache-ram', '12'])
+    // 阈值只在默认（RAM 压力）模式下生效
+    expect(buildAdvancedArgs({ cache: 'none', cacheRam: 12 })).toEqual(['--cache-none'])
+  })
+
+  it('设备组：default-device 允许 0，oneAPI 选择器透传', () => {
+    expect(buildAdvancedArgs({ defaultDevice: 0 })).toEqual(['--default-device', '0'])
+    expect(buildAdvancedArgs({ defaultDevice: 1 })).toEqual(['--default-device', '1'])
+    expect(buildAdvancedArgs({ defaultDevice: '' })).toEqual([])
+    expect(buildAdvancedArgs({ oneapiDeviceSelector: 'level_zero:0' })).toEqual([
+      '--oneapi-device-selector',
+      'level_zero:0'
+    ])
+  })
+
+  it('精度补充：channels-last 与 fp8 计算', () => {
+    expect(buildAdvancedArgs({ forceChannelsLast: true })).toEqual(['--force-channels-last'])
+    expect(buildAdvancedArgs({ supportsFp8Compute: true })).toEqual(['--supports-fp8-compute'])
+  })
+
+  it('内存补充：vram-headroom 与三个开关', () => {
+    expect(buildAdvancedArgs({ vramHeadroom: 1.5 })).toEqual(['--vram-headroom', '1.5'])
+    expect(buildAdvancedArgs({ vramHeadroom: 0 })).toEqual([])
+    expect(buildAdvancedArgs({ disableNvmlPressure: true })).toEqual(['--disable-nvml-pressure'])
+    expect(buildAdvancedArgs({ disableCudaGraphs: true })).toEqual(['--disable-cuda-graphs'])
+    expect(buildAdvancedArgs({ forceNonBlocking: true })).toEqual(['--force-non-blocking'])
+  })
+
+  it('Triton 后端三态', () => {
+    expect(buildAdvancedArgs({ tritonBackend: 'on' })).toEqual(['--enable-triton-backend'])
+    expect(buildAdvancedArgs({ tritonBackend: 'off' })).toEqual(['--disable-triton-backend'])
+    expect(buildAdvancedArgs({ tritonBackend: '' })).toEqual([])
+  })
+
+  it('注意力组：sage/flash/ck 专属 flag，其余走 cross-attention', () => {
     expect(buildAdvancedArgs({ attention: 'sage' })).toEqual(['--use-sage-attention'])
     expect(buildAdvancedArgs({ attention: 'flash' })).toEqual(['--use-flash-attention'])
+    expect(buildAdvancedArgs({ attention: 'ck' })).toEqual(['--use-ck-attention'])
     expect(buildAdvancedArgs({ attention: 'split' })).toEqual(['--use-split-cross-attention'])
     expect(buildAdvancedArgs({ upcastAttention: 'on' })).toEqual(['--force-upcast-attention'])
     expect(buildAdvancedArgs({ upcastAttention: 'off' })).toEqual(['--dont-upcast-attention'])
@@ -142,12 +179,40 @@ describe('parseAdvancedArgs', () => {
     expect(parseAdvancedArgs(['--use-quad-cross-attention']).attention).toBe('quad')
     expect(parseAdvancedArgs(['--use-sage-attention']).attention).toBe('sage')
     expect(parseAdvancedArgs(['--use-flash-attention']).attention).toBe('flash')
+    expect(parseAdvancedArgs(['--use-ck-attention']).attention).toBe('ck')
   })
 
   it('cache-lru 同时还原容量', () => {
     const out = parseAdvancedArgs(['--cache-lru', '6'])
     expect(out.cache).toBe('lru')
     expect(out.cacheLruN).toBe(6)
+  })
+
+  it('cache-ram / high-ram / vram-headroom / default-device 还原', () => {
+    expect(parseAdvancedArgs(['--cache-ram', '12']).cacheRam).toBe(12)
+    expect(parseAdvancedArgs(['--high-ram']).cache).toBe('high-ram')
+    expect(parseAdvancedArgs(['--vram-headroom', '1.5']).vramHeadroom).toBe(1.5)
+    expect(parseAdvancedArgs(['--default-device', '0']).defaultDevice).toBe(0)
+  })
+
+  it('新增布尔与文本参数还原', () => {
+    const out = parseAdvancedArgs([
+      '--force-channels-last',
+      '--supports-fp8-compute',
+      '--disable-nvml-pressure',
+      '--disable-cuda-graphs',
+      '--force-non-blocking',
+      '--enable-triton-backend',
+      '--oneapi-device-selector',
+      'level_zero:0'
+    ])
+    expect(out.forceChannelsLast).toBe(true)
+    expect(out.supportsFp8Compute).toBe(true)
+    expect(out.disableNvmlPressure).toBe(true)
+    expect(out.disableCudaGraphs).toBe(true)
+    expect(out.forceNonBlocking).toBe(true)
+    expect(out.tritonBackend).toBe('on')
+    expect(out.oneapiDeviceSelector).toBe('level_zero:0')
   })
 
   it('非本协议 token 被忽略', () => {
@@ -165,6 +230,8 @@ describe('build/parse 往返一致', () => {
       maxUploadSize: 250,
       autoLaunch: 'off',
       cudaDevice: '0',
+      defaultDevice: 0,
+      oneapiDeviceSelector: 'level_zero:0',
       directml: true,
       cudaMalloc: 'on',
       forceFp: 'fp16',
@@ -172,6 +239,8 @@ describe('build/parse 往返一致', () => {
       vaePrecision: 'bf16',
       textEncPrecision: 'fp32',
       fp16Intermediates: true,
+      forceChannelsLast: true,
+      supportsFp8Compute: true,
       previewMethod: 'taesd',
       previewSize: 256,
       cache: 'lru',
@@ -181,12 +250,17 @@ describe('build/parse 往返一致', () => {
       upcastAttention: 'off',
       vramMode: 'lowvram',
       reserveVram: 2,
+      vramHeadroom: 1.5,
       asyncOffload: 'on',
       dynamicVram: 'off',
       fastDisk: true,
       disableSmartMemory: true,
       disablePinnedMemory: true,
       mmap: 'on',
+      disableNvmlPressure: true,
+      disableCudaGraphs: true,
+      forceNonBlocking: true,
+      tritonBackend: 'off',
       fast: true,
       deterministic: true,
       hashFunction: 'xxh64',

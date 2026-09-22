@@ -339,6 +339,25 @@ export function downloadFile(
   })
 }
 
+/** 归一化仓库地址，用于比较 origin 是否与当前设置一致（忽略 .git 后缀与结尾斜杠） */
+function normalizeRepoUrl(url: string): string {
+  return url.trim().replace(/\.git$/, '').replace(/\/+$/, '').toLowerCase()
+}
+
+/** 已存在仓库时把 origin 对齐到当前设置的源：GitCode ↔ GitHub 切换后 fetch / pull 才走新地址 */
+async function syncOriginRemote(repo: string, on: ProgressFn): Promise<void> {
+  const p = paths()
+  const cur = await run(gitExe(), ['remote', 'get-url', 'origin'], { cwd: p.comfy, timeoutMs: 8000 })
+  if (cur.code !== 0) {
+    await run(gitExe(), ['remote', 'add', 'origin', repo], { cwd: p.comfy, timeoutMs: 8000 })
+    return
+  }
+  if (normalizeRepoUrl(cur.out) === normalizeRepoUrl(repo)) return
+  emit(on, t('m.installer.stageSource'), t('m.installer.switchRemote'), 12)
+  const r = await run(gitExe(), ['remote', 'set-url', 'origin', repo], { cwd: p.comfy, timeoutMs: 8000 })
+  if (r.code !== 0) throw new Error(t('m.installer.switchRemoteFailed', { detail: (r.err || r.out).slice(-200) }))
+}
+
 /** 克隆 / 下载 ComfyUI 源码 */
 async function fetchSource(version: string, on: ProgressFn): Promise<void> {
   const s = loadSettings()
@@ -348,6 +367,7 @@ async function fetchSource(version: string, on: ProgressFn): Promise<void> {
 
   if (fs.existsSync(path.join(p.comfy, '.git'))) {
     emit(on, t('m.installer.stageSource'), t('m.installer.repoExistsSwitch'), 12)
+    await syncOriginRemote(repo, on)
     await run(gitExe(), ['fetch', '--tags', '--depth', '1', 'origin', version === 'master' ? 'master' : `refs/tags/${version}`], { cwd: p.comfy })
     const r = await run(gitExe(), ['checkout', version], { cwd: p.comfy })
     if (r.code !== 0) throw new Error(t('m.installer.switchVersionFailed', { detail: (r.err || r.out).slice(-300) }))
@@ -379,7 +399,7 @@ async function fetchSource(version: string, on: ProgressFn): Promise<void> {
   // 兜底：下载 zip 解压
   const zipUrl =
     s.gitMirror === 'gitcode'
-      ? `https://gitcode.com/ComfyUI/ComfyUI/repository/archive.zip?ref=${version}`
+      ? `https://gitcode.com/GitHub_Trending/co/ComfyUI/repository/archive.zip?ref=${version}`
       : `https://codeload.github.com/comfyanonymous/ComfyUI/zip/refs/${version === 'master' ? 'heads/master' : `tags/${version}`}`
   const zipPath = path.join(p.root, 'comfyui.zip')
   emit(on, t('m.installer.stageSource'), t('m.installer.downloadingZip'), 14)
@@ -529,10 +549,20 @@ export async function installRequirements(on: ProgressFn, basePercent = 70): Pro
   const req = path.join(p.comfy, 'requirements.txt')
   if (!fs.existsSync(req)) return
   emit(on, t('m.installer.stageDeps'), t('m.installer.installDeps'), basePercent)
-  const r = await pip(['install', '-r', req, ...pipIndexArgs()], {
-    onData: d => emit(on, t('m.installer.stageDeps'), d.trim().split('\n').pop() || '', Math.min(basePercent + 22, basePercent + 24)),
-    timeoutMs: 60 * 60 * 1000
-  })
+  const runPip = (indexUrl?: string) =>
+    pip(['install', '-r', req], {
+      indexUrl,
+      onData: d => emit(on, t('m.installer.stageDeps'), d.trim().split('\n').pop() || '', Math.min(basePercent + 22, basePercent + 24)),
+      timeoutMs: 60 * 60 * 1000
+    })
+  const mirror = PIP_MIRRORS[loadSettings().pipMirror]
+  let r = await runPip(mirror || undefined)
+  // 国内镜像同步新包有延迟（如 comfyui-workflow-templates-media-assets-02）：镜像缺包时回退官方 PyPI 重试，
+  // 已装好的包 pip 会直接跳过，代价很小
+  if (r.code !== 0 && mirror && /No matching distribution found|Could not find a version/i.test(r.out)) {
+    emit(on, t('m.installer.stageDeps'), t('m.installer.retryOfficialPyPI'), basePercent)
+    r = await runPip()
+  }
   if (r.code !== 0) throw new Error(t('m.installer.depsInstallFailed'))
 }
 
@@ -639,6 +669,7 @@ export async function updateComfyUI(version: string, on: ProgressFn): Promise<vo
   const p = paths()
   emit(on, t('m.installer.stageUpdate'), t('m.installer.pullLatest'), 10)
   if (fs.existsSync(path.join(p.comfy, '.git'))) {
+    await syncOriginRemote(comfyRepoUrl(), on)
     await run(gitExe(), ['fetch', '--tags'], { cwd: p.comfy, timeoutMs: 10 * 60 * 1000 })
     const r =
       version === 'master'

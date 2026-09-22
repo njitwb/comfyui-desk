@@ -20,6 +20,14 @@ export default {
   'm.diag.deps.name': ['依赖完整性', 'Dependency integrity'],
   'm.diag.deps.ok': ['无冲突', 'No conflicts'],
   'm.diag.deps.conflict': ['存在依赖冲突', 'Dependency conflicts found'],
+  'm.diag.deps.missing': [
+    '{n} 个依赖未安装: {list}',
+    '{n} required packages are not installed: {list}'
+  ],
+  'm.diag.deps.mismatch': [
+    '{n} 个依赖版本与 requirements.txt 不符: {list}',
+    '{n} packages differ from requirements.txt: {list}'
+  ],
   'm.diag.git.name': ['Git', 'Git'],
   'm.diag.git.unavailable': ['git 不可用，安装/更新节点功能将受限', 'git unavailable; node install/update will be limited'],
   'm.diag.stage.repair': ['修复', 'Repair'],

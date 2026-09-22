@@ -73,6 +73,8 @@ const advGroups: AdvGroup[] = [
     title: 'settings.adv.g.device',
     opts: [
       { key: 'cudaDevice', label: 'settings.adv.cudaDevice', type: 'text', placeholder: 'settings.adv.cudaDevice.ph' },
+      { key: 'defaultDevice', label: 'settings.adv.defaultDevice', type: 'number', placeholder: 'settings.adv.defaultDevice.ph' },
+      { key: 'oneapiDeviceSelector', label: 'settings.adv.oneapiDeviceSelector', type: 'text', placeholder: 'settings.adv.oneapiDeviceSelector.ph' },
       { key: 'cudaMalloc', label: 'settings.adv.cudaMalloc', type: 'select', options: tri('settings.adv.tri.default.torch') },
       { key: 'directml', label: 'settings.adv.directml', type: 'bool' }
     ]
@@ -123,7 +125,9 @@ const advGroups: AdvGroup[] = [
           { v: 'bf16', label: 'settings.adv.opt.bf16' }
         ]
       },
-      { key: 'fp16Intermediates', label: 'settings.adv.fp16Intermediates', type: 'bool' }
+      { key: 'fp16Intermediates', label: 'settings.adv.fp16Intermediates', type: 'bool' },
+      { key: 'forceChannelsLast', label: 'settings.adv.forceChannelsLast', type: 'bool' },
+      { key: 'supportsFp8Compute', label: 'settings.adv.supportsFp8Compute', type: 'bool', hint: 'settings.adv.supportsFp8Compute.hint' }
     ]
   },
   {
@@ -150,12 +154,17 @@ const advGroups: AdvGroup[] = [
           { v: '', label: 'settings.adv.cache.ram' },
           { v: 'none', label: 'settings.adv.cache.none' },
           { v: 'classic', label: 'settings.adv.cache.classic' },
-          { v: 'lru', label: 'settings.adv.cache.lru' }
+          { v: 'lru', label: 'settings.adv.cache.lru' },
+          { v: 'high-ram', label: 'settings.adv.cache.highRam' }
         ]
       },
       {
         key: 'cacheLruN', label: 'settings.adv.cacheLruN', type: 'number', placeholder: 'settings.adv.cacheLruN.ph',
         showIf: a => a.cache === 'lru'
+      },
+      {
+        key: 'cacheRam', label: 'settings.adv.cacheRam', type: 'number', placeholder: 'settings.adv.cacheRam.ph',
+        showIf: a => !a.cache
       }
     ]
   },
@@ -170,7 +179,8 @@ const advGroups: AdvGroup[] = [
           { v: 'quad', label: 'settings.adv.attention.quad' },
           { v: 'pytorch', label: 'settings.adv.attention.pytorch' },
           { v: 'sage', label: 'settings.adv.attention.sage' },
-          { v: 'flash', label: 'settings.adv.attention.flash' }
+          { v: 'flash', label: 'settings.adv.attention.flash' },
+          { v: 'ck', label: 'settings.adv.attention.ck' }
         ]
       },
       { key: 'disableXformers', label: 'settings.adv.disableXformers', type: 'bool' },
@@ -199,18 +209,23 @@ const advGroups: AdvGroup[] = [
         ]
       },
       { key: 'reserveVram', label: 'settings.adv.reserveVram', type: 'number', placeholder: 'settings.adv.reserveVram.ph' },
+      { key: 'vramHeadroom', label: 'settings.adv.vramHeadroom', type: 'number', placeholder: 'settings.adv.vramHeadroom.ph' },
       { key: 'asyncOffload', label: 'settings.adv.asyncOffload', type: 'select', options: tri('settings.adv.tri.default.nvidiaOn') },
       { key: 'dynamicVram', label: 'settings.adv.dynamicVram', type: 'select', options: tri('settings.adv.tri.default.nvidiaAuto') },
       { key: 'fastDisk', label: 'settings.adv.fastDisk', type: 'bool' },
       { key: 'disableSmartMemory', label: 'settings.adv.disableSmartMemory', type: 'bool' },
       { key: 'disablePinnedMemory', label: 'settings.adv.disablePinnedMemory', type: 'bool' },
-      { key: 'mmap', label: 'settings.adv.mmap', type: 'select', options: tri('settings.adv.opt.default') }
+      { key: 'mmap', label: 'settings.adv.mmap', type: 'select', options: tri('settings.adv.opt.default') },
+      { key: 'disableNvmlPressure', label: 'settings.adv.disableNvmlPressure', type: 'bool', hint: 'settings.adv.disableNvmlPressure.hint' },
+      { key: 'disableCudaGraphs', label: 'settings.adv.disableCudaGraphs', type: 'bool' },
+      { key: 'forceNonBlocking', label: 'settings.adv.forceNonBlocking', type: 'bool', hint: 'settings.adv.forceNonBlocking.hint' }
     ]
   },
   {
     title: 'settings.adv.g.perf',
     opts: [
       { key: 'fast', label: 'settings.adv.fast', type: 'bool', hint: 'settings.adv.fast.hint' },
+      { key: 'tritonBackend', label: 'settings.adv.tritonBackend', type: 'select', options: tri('settings.adv.tri.default.rocmOff'), hint: 'settings.adv.tritonBackend.hint' },
       { key: 'deterministic', label: 'settings.adv.deterministic', type: 'bool' },
       {
         key: 'hashFunction', label: 'settings.adv.hashFunction', type: 'select',

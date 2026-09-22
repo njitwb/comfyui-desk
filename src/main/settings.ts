@@ -65,7 +65,7 @@ const defaults: Settings = {
 
 export const REPO_URLS: Record<Exclude<GitMirror, 'custom'>, string> = {
   github: 'https://github.com/comfyanonymous/ComfyUI.git',
-  gitcode: 'https://gitcode.com/ComfyUI/ComfyUI'
+  gitcode: 'https://gitcode.com/GitHub_Trending/co/ComfyUI'
 }
 
 export const PIP_MIRRORS: Record<PipMirror, string> = {

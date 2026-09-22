@@ -7,6 +7,66 @@ import { installTorch, installRequirements } from './installer'
 import { t } from './i18n'
 import type { DiagItem, ProgressEvent } from '../shared/api'
 
+/** 包名归一化（PEP 503）：比较时忽略大小写与 - _ . 差异 */
+function normName(n: string): string {
+  return n.trim().toLowerCase().replace(/[-_.]+/g, '-')
+}
+
+/** 解析 requirements.txt：返回包名与 == 固定版本（跳过 -r/--index-url 等指令行、带条件标记的行与注释） */
+export function parseRequirements(file: string): Array<{ name: string; version: string }> {
+  const out: Array<{ name: string; version: string }> = []
+  let text = ''
+  try {
+    text = fs.readFileSync(file, 'utf-8')
+  } catch {
+    return out
+  }
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.split('#')[0].trim()
+    if (!line || line.startsWith('-') || line.includes(';')) continue
+    const m = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*(.*)$/)
+    if (!m) continue
+    out.push({ name: m[1], version: /^==\s*([^\s,]+)$/.exec(m[2].trim())?.[1] || '' })
+  }
+  return out
+}
+
+/** 已安装包名 → 版本 */
+async function installedPackages(py: string): Promise<Map<string, string> | null> {
+  try {
+    const r = await run(py, ['-m', 'pip', 'list', '--format=json', '--disable-pip-version-check'], { timeoutMs: 60000 })
+    if (r.code !== 0) return null
+    const list = JSON.parse(r.out) as Array<{ name: string; version: string }>
+    return new Map(list.map(x => [normName(x.name), x.version]))
+  } catch {
+    return null
+  }
+}
+
+/** 名称列表摘要：最多列 3 个，其余折叠为 +N */
+function summarize(names: string[]): string {
+  return names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : '')
+}
+
+/**
+ * 对比 requirements.txt 与实际安装情况：声明了却没装的包、以及 == 固定版本不符的包。
+ * pip check 只看已装包之间的依赖关系，装都没装的包它发现不了（镜像缺新包导致安装中断就是这种情况）。
+ */
+async function requirementsIssues(comfyDir: string, py: string): Promise<{ missing: string[]; mismatched: string[] }> {
+  const missing: string[] = []
+  const mismatched: string[] = []
+  const reqs = parseRequirements(path.join(comfyDir, 'requirements.txt'))
+  if (!reqs.length) return { missing, mismatched }
+  const installed = await installedPackages(py)
+  if (!installed) return { missing, mismatched }
+  for (const { name, version } of reqs) {
+    const have = installed.get(normName(name))
+    if (!have) missing.push(name)
+    else if (version && have !== version) mismatched.push(`${name} ${version}≠${have}`)
+  }
+  return { missing, mismatched }
+}
+
 /** 一键体检：逐项检查运行环境 */
 export async function runDiagnostics(): Promise<DiagItem[]> {
   const items: DiagItem[] = []
@@ -50,12 +110,19 @@ export async function runDiagnostics(): Promise<DiagItem[]> {
       items.push({ id: 'torch', name: t('m.diag.torch.name'), status: 'fail', message: t('m.diag.torch.missing') })
     }
 
+    const { missing, mismatched } = await requirementsIssues(p.comfy, p.venvPython)
     const c = await run(p.venvPython, ['-m', 'pip', 'check'], { timeoutMs: 60000 })
-    items.push(
-      c.code === 0
-        ? { id: 'deps', name: t('m.diag.deps.name'), status: 'pass', message: t('m.diag.deps.ok') }
-        : { id: 'deps', name: t('m.diag.deps.name'), status: 'warn', message: (c.out || c.err).trim().split('\n')[0] || t('m.diag.deps.conflict') }
-    )
+    const parts: string[] = []
+    if (missing.length) parts.push(t('m.diag.deps.missing', { n: String(missing.length), list: summarize(missing) }))
+    if (mismatched.length)
+      parts.push(t('m.diag.deps.mismatch', { n: String(mismatched.length), list: summarize(mismatched) }))
+    if (c.code !== 0) parts.push((c.out || c.err).trim().split('\n')[0] || t('m.diag.deps.conflict'))
+    items.push({
+      id: 'deps',
+      name: t('m.diag.deps.name'),
+      status: missing.length ? 'fail' : parts.length ? 'warn' : 'pass',
+      message: parts.length ? parts.join('; ') : t('m.diag.deps.ok')
+    })
   }
 
   try {

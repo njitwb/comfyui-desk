@@ -36,6 +36,7 @@ export default {
   'settings.adv.tri.default.torch': ['默认（torch 2.0+ 自动）', 'Default (automatic on torch 2.0+)'],
   'settings.adv.tri.default.nvidiaOn': ['默认（Nvidia 启用）', 'Default (enabled on Nvidia)'],
   'settings.adv.tri.default.nvidiaAuto': ['默认（Nvidia 自动）', 'Default (automatic on Nvidia)'],
+  'settings.adv.tri.default.rocmOff': ['默认（AMD 开启 / 其他关闭）', 'Default (on for AMD, off elsewhere)'],
 
   /** 高级选项分组标题 */
   'settings.adv.g.network': ['网络与服务器', 'Network & server'],
@@ -70,6 +71,10 @@ export default {
   'settings.adv.cudaDevice.ph': ['如 0 ，多卡 0,1 ，all 为全部', 'e.g. 0, multi-GPU 0,1, all for every device'],
   'settings.adv.cudaMalloc': ['cudaMallocAsync', 'cudaMallocAsync'],
   'settings.adv.directml': ['使用 DirectML（AMD / 核显）', 'Use DirectML (AMD / integrated GPU)'],
+  'settings.adv.defaultDevice': ['默认设备 ID', 'Default device ID'],
+  'settings.adv.defaultDevice.ph': ['留空 = 自动', 'Empty = automatic'],
+  'settings.adv.oneapiDeviceSelector': ['oneAPI 设备选择器', 'oneAPI device selector'],
+  'settings.adv.oneapiDeviceSelector.ph': ['如 level_zero:0', 'e.g. level_zero:0'],
 
   /** 精度与推理 */
   'settings.adv.forceFp': ['全局浮点精度', 'Global float precision'],
@@ -82,6 +87,9 @@ export default {
   'settings.adv.vaePrecision.cpu': ['在 CPU 上运行', 'Run on CPU'],
   'settings.adv.textEncPrecision': ['文本编码器精度', 'Text encoder precision'],
   'settings.adv.fp16Intermediates': ['中间张量 fp16（实验性）', 'fp16 intermediate tensors (experimental)'],
+  'settings.adv.forceChannelsLast': ['强制 channels-last 内存格式', 'Force channels-last memory format'],
+  'settings.adv.supportsFp8Compute': ['按支持 fp8 计算运行', 'Assume fp8 compute support'],
+  'settings.adv.supportsFp8Compute.hint': ['仅当显卡确实支持 fp8 计算时启用', 'Enable only when the GPU really supports fp8 compute'],
 
   /** 预览 */
   'settings.adv.previewMethod': ['采样预览方式', 'Sampling preview method'],
@@ -98,8 +106,11 @@ export default {
   'settings.adv.cache.none': ['禁用缓存（省内存）', 'Disable cache (saves memory)'],
   'settings.adv.cache.classic': ['旧版激进缓存', 'Legacy aggressive cache'],
   'settings.adv.cache.lru': ['LRU 缓存', 'LRU cache'],
+  'settings.adv.cache.highRam': ['高内存模式（--high-ram）', 'High RAM mode (--high-ram)'],
   'settings.adv.cacheLruN': ['LRU 缓存条数', 'LRU cache entries'],
   'settings.adv.cacheLruN.ph': ['默认 3', 'Default 3'],
+  'settings.adv.cacheRam': ['RAM 缓存阈值 (GB)', 'RAM cache thresholds (GB)'],
+  'settings.adv.cacheRam.ph': ['默认约系统内存 10%', 'Default is about 10% of system RAM'],
 
   /** 注意力机制 */
   'settings.adv.attention': ['交叉注意力', 'Cross attention'],
@@ -109,6 +120,7 @@ export default {
   'settings.adv.attention.pytorch': ['pytorch', 'pytorch'],
   'settings.adv.attention.sage': ['SageAttention', 'SageAttention'],
   'settings.adv.attention.flash': ['FlashAttention', 'FlashAttention'],
+  'settings.adv.attention.ck': ['Comfy Kitchen 注意力', 'Comfy Kitchen attention'],
   'settings.adv.disableXformers': ['禁用 xformers', 'Disable xformers'],
   'settings.adv.upcastAttention': ['注意力上转换', 'Upcast attention'],
   'settings.adv.upcastAttention.on': ['强制上转换（可修黑图）', 'Force upcast (can fix black images)'],
@@ -124,16 +136,25 @@ export default {
   'settings.adv.vramMode.cpu': ['cpu（纯 CPU，较慢）', 'cpu (CPU only, slower)'],
   'settings.adv.reserveVram': ['预留显存 (GB)', 'Reserved VRAM (GB)'],
   'settings.adv.reserveVram.ph': ['为系统等预留', 'Reserve for the system and more'],
+  'settings.adv.vramHeadroom': ['额外显存余量 (GB)', 'Extra VRAM headroom (GB)'],
+  'settings.adv.vramHeadroom.ph': ['默认 0', 'Default 0'],
   'settings.adv.asyncOffload': ['异步权重卸载', 'Async weight offload'],
   'settings.adv.dynamicVram': ['动态 VRAM', 'Dynamic VRAM'],
   'settings.adv.fastDisk': ['优先高速磁盘加载（NVMe）', 'Prefer fast disk loading (NVMe)'],
   'settings.adv.disableSmartMemory': ['禁用智能内存（积极卸载到 RAM）', 'Disable smart memory (aggressively offload to RAM)'],
   'settings.adv.disablePinnedMemory': ['禁用固定内存', 'Disable pinned memory'],
   'settings.adv.mmap': ['mmap 加载模型文件', 'Load model files with mmap'],
+  'settings.adv.disableNvmlPressure': ['显存压力改用 CUDA 检测', 'Use CUDA instead of NVML for memory pressure'],
+  'settings.adv.disableNvmlPressure.hint': ['NVML 读数异常（多卡 / 虚拟化）时可切换', 'Switch when NVML readings misbehave (multi-GPU / virtualization)'],
+  'settings.adv.disableCudaGraphs': ['禁用 CUDA Graphs', 'Disable CUDA graphs'],
+  'settings.adv.forceNonBlocking': ['强制非阻塞张量操作', 'Force non-blocking tensor ops'],
+  'settings.adv.forceNonBlocking.hint': ['非 Nvidia 平台可能提速，也可能引发问题', 'May speed up non-Nvidia platforms but can also cause issues'],
 
   /** 性能与调试 */
   'settings.adv.fast': ['启用全部 --fast 实验优化', 'Enable all --fast experimental optimizations'],
   'settings.adv.fast.hint': ['可能影响质量或稳定性', 'May affect quality or stability'],
+  'settings.adv.tritonBackend': ['comfy-kitchen Triton 后端', 'comfy-kitchen Triton backend'],
+  'settings.adv.tritonBackend.hint': ['默认 AMD / ROCm 启用，其余平台关闭', 'Enabled by default on AMD / ROCm, off elsewhere'],
   'settings.adv.deterministic': ['确定性算法（更慢）', 'Deterministic algorithms (slower)'],
   'settings.adv.hashFunction': ['文件哈希算法', 'File hash algorithm'],
   'settings.adv.hashFunction.sha256': ['sha256（默认）', 'sha256 (default)'],
