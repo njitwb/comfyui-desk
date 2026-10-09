@@ -4,10 +4,8 @@ import { api } from '../api'
 import { refreshSettings } from '../store'
 import { t, fmtDate } from '../i18n'
 import type { MessageKey } from '../../../shared/i18n'
-import type { DownloadTask, ModelCategory, ModelItem, ModelSource, OnlineModel, OnlineModelFile } from '../../../shared/api'
+import type { DownloadTask, ModelDir, ModelDirContent, ModelItem, ModelSource, OnlineModel, OnlineModelFile } from '../../../shared/api'
 
-const cats = ref<ModelCategory[]>([])
-const activeCat = ref('')
 const loading = ref(false)
 const error = ref('')
 const toast = ref('')
@@ -44,7 +42,68 @@ const tasks = ref<DownloadTask[]>([])
 
 const STATUS_TEXT: Record<string, MessageKey> = { downloading: 'models.status.downloading', paused: 'models.status.paused', completed: 'models.status.completed', error: 'models.status.error' }
 
-const active = computed(() => cats.value.find(c => c.name === activeCat.value))
+// 模型库：树 + 面包屑导航（整个模型目录，含内置分类与自定义目录）
+const crumb = ref<string[]>([])
+const dirContent = ref<ModelDirContent | null>(null)
+const newDirOpen = ref(false)
+const newDirName = ref('')
+const libraryQuery = ref('')
+/** 当前目录下的文件（按文件名/相对路径搜索过滤） */
+const libraryShownFiles = computed(() => {
+  if (!dirContent.value) return []
+  const q = libraryQuery.value.trim().toLowerCase()
+  const files = dirContent.value.files
+  if (!q) return files
+  return files.filter(f => f.name.toLowerCase().includes(q) || f.relPath.toLowerCase().includes(q))
+})
+
+/** 当前面包屑路径（根为空串） */
+function curRel(): string {
+  return crumb.value.join('/')
+}
+async function loadDir(): Promise<void> {
+  loading.value = true
+  error.value = ''
+  try {
+    dirContent.value = (await api.listModelDir(curRel())) as ModelDirContent
+  } catch (e) {
+    error.value = (e as Error).message || String(e)
+  } finally {
+    loading.value = false
+  }
+}
+function enterDir(d: ModelDir): void {
+  crumb.value.push(d.name)
+  movingPath.value = ''
+  void loadDir()
+}
+function backTo(i: number): void {
+  crumb.value = crumb.value.slice(0, i)
+  movingPath.value = ''
+  void loadDir()
+}
+function openNewDir(): void {
+  newDirName.value = ''
+  newDirOpen.value = true
+}
+async function createDir(): Promise<void> {
+  const name = newDirName.value.trim()
+  if (!name || name.includes('/') || name.startsWith('.')) {
+    error.value = t('models.custom.nameInvalid')
+    return
+  }
+  error.value = ''
+  try {
+    await api.createModelDir(curRel() ? `${curRel()}/${name}` : name)
+    newDirOpen.value = false
+    newDirName.value = ''
+    // 在根视图新建顶层目录后刷新类别下拉（下载/移动目标）
+    if (!crumb.value.length) categories.value = (await api.modelCategories()) as string[]
+    await loadDir()
+  } catch (e) {
+    error.value = (e as Error).message || String(e)
+  }
+}
 
 /** 过滤后的仓库文件（按文件名子串） */
 const onlineShownFiles = computed(() => {
@@ -68,26 +127,13 @@ function statusText(task: DownloadTask): string {
   return key ? t(key) : task.status
 }
 
-async function scan() {
-  loading.value = true
-  error.value = ''
-  try {
-    cats.value = (await api.scanModels()) as ModelCategory[]
-    if (!activeCat.value && cats.value.length) activeCat.value = cats.value[0].name
-  } catch (e) {
-    error.value = (e as Error).message || String(e)
-  } finally {
-    loading.value = false
-  }
-}
-
 async function del(f: ModelItem) {
   if (!confirm(t('models.confirmDelete', { path: f.relPath }))) return
   try {
     await api.deleteModel(f.relPath)
     toast.value = t('models.toast.deleted', { name: f.name })
     setTimeout(() => (toast.value = ''), 2500)
-    await scan()
+    await loadDir()
   } catch (e) {
     error.value = (e as Error).message || String(e)
   }
@@ -114,7 +160,7 @@ async function doMove(f: ModelItem): Promise<void> {
     toast.value = t('models.toast.moved', { name: f.name, category: movingCat.value })
     setTimeout(() => (toast.value = ''), 2500)
     movingPath.value = ''
-    await scan()
+    await loadDir()
   } catch (e) {
     error.value = (e as Error).message || String(e)
   }
@@ -252,17 +298,18 @@ onMounted(async () => {
     const prev = new Map(tasks.value.map(task => [task.id, task.status]))
     tasks.value = list
     for (const task of list) {
-      // 下载完成：刷新模型库并切到对应类别
+      // 下载完成：跳到对应目录并刷新
       if (task.status === 'completed' && prev.get(task.id) !== 'completed') {
         toast.value = t('models.toast.done', { name: task.filename })
         setTimeout(() => (toast.value = ''), 4000)
-        void scan().then(() => {
-          if (cats.value.some(c => c.name === task.category)) activeCat.value = task.category
-        })
+        const seg = (task.category ? String(task.category).split('/').filter(Boolean) : []).slice(0, 3)
+        crumb.value = seg
+        movingPath.value = ''
+        void loadDir()
       }
     }
   })
-  await scan()
+  await loadDir()
 })
 
 onUnmounted(() => offDl?.())
@@ -402,31 +449,48 @@ onUnmounted(() => offDl?.())
       <div class="row" style="margin-bottom: 12px">
         <h3 style="margin: 0">{{ t('models.library') }}</h3>
         <div class="spacer"></div>
-        <button class="btn small" :disabled="loading" @click="scan">{{ loading ? t('models.scanning') : t('common.refresh') }}</button>
+        <input v-model="libraryQuery" type="text" :placeholder="t('models.library.search')" style="width: 240px; margin-right: 8px" />
+        <button class="btn small" :disabled="loading" @click="loadDir">{{ loading ? t('models.scanning') : t('common.refresh') }}</button>
       </div>
-      <div v-if="cats.length" class="chips">
-        <span
-          v-for="c in cats"
-          :key="c.name"
-          class="chip"
-          :class="{ active: activeCat === c.name }"
-          @click="activeCat = c.name"
-        >
-          {{ c.name }}<span class="count">{{ c.count }}</span>
-        </span>
+      <div class="row wrap" style="gap: 8px; align-items: center; margin-bottom: 10px">
+        <div class="row" style="gap: 4px; align-items: center">
+          <span
+            class="crumb"
+            :class="{ active: crumb.length === 0 }"
+            @click="backTo(0)"
+          >{{ t('models.custom.root') }}</span>
+          <template v-for="(seg, i) in crumb" :key="i">
+            <span class="crumb muted">/</span>
+            <span class="crumb" :class="{ active: i === crumb.length - 1 }" @click="backTo(i + 1)">{{ seg }}</span>
+          </template>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn small" @click="openNewDir">{{ crumb.length ? t('models.custom.newSub') : t('models.custom.newTop') }}</button>
       </div>
-      <div v-if="active">
-        <table class="list" v-if="active.files.length">
+      <div v-if="newDirOpen" class="row" style="gap: 8px; align-items: center; margin-bottom: 10px">
+        <input v-model="newDirName" type="text" :placeholder="t('models.custom.name')" style="width: 220px" @keyup.enter="createDir" />
+        <button class="btn small primary" :disabled="!newDirName.trim()" @click="createDir">{{ t('models.custom.create') }}</button>
+        <button class="btn small" @click="newDirOpen = false">{{ t('common.cancel') }}</button>
+      </div>
+      <div v-if="loading" class="muted" style="padding: 6px 0">{{ t('common.loading') }}</div>
+      <div v-else-if="dirContent">
+        <div v-if="dirContent.dirs.length" class="custom-dirs">
+          <div v-for="d in dirContent.dirs" :key="d.relPath" class="custom-dir-row" @click="enterDir(d)">
+            <span class="mono">{{ d.name }}</span>
+            <div class="spacer"></div>
+            <span class="muted">→</span>
+          </div>
+        </div>
+        <table class="list" v-if="libraryShownFiles.length">
           <thead>
-            <tr><th>{{ t('models.col.file') }}</th><th style="width: 90px">{{ t('common.size') }}</th><th style="width: 100px">{{ t('models.col.date') }}</th><th style="width: 200px">{{ t('models.col.relPath') }}</th><th style="width: 200px"></th></tr>
+            <tr><th>{{ t('models.col.file') }}</th><th style="width: 90px">{{ t('common.size') }}</th><th style="width: 100px">{{ t('models.col.date') }}</th><th style="width: 200px"></th></tr>
           </thead>
           <tbody>
-            <template v-for="f in active.files" :key="f.relPath">
+            <template v-for="f in libraryShownFiles" :key="f.relPath">
               <tr>
                 <td class="mono">{{ f.name }}</td>
                 <td>{{ human(f.size) }}</td>
                 <td class="muted">{{ fmtDate(f.mtime) }}</td>
-                <td class="mono muted" style="word-break: break-all">{{ f.relPath }}</td>
                 <td>
                   <button class="btn small" @click="reveal(f)">{{ t('common.reveal') }}</button>
                   <button class="btn small" @click="startMove(f)">{{ t('models.move') }}</button>
@@ -434,7 +498,7 @@ onUnmounted(() => offDl?.())
                 </td>
               </tr>
               <tr v-if="movingPath === f.relPath">
-                <td colspan="5">
+                <td colspan="4">
                   <div class="row" style="gap: 8px; align-items: center">
                     <span class="muted">{{ t('models.move.tip', { name: f.name }) }}</span>
                     <select v-model="movingCat" style="width: 200px">
@@ -449,9 +513,10 @@ onUnmounted(() => offDl?.())
             </template>
           </tbody>
         </table>
-        <div v-else class="empty">{{ t('models.empty.cat') }}</div>
+        <div v-if="!dirContent.dirs.length && !libraryShownFiles.length" class="empty">
+          {{ libraryQuery.trim() ? t('models.library.noMatch') : t('models.custom.empty') }}
+        </div>
       </div>
-      <div v-else class="empty">{{ t('models.empty.dir') }}</div>
     </div>
   </div>
 </template>
@@ -518,5 +583,33 @@ onUnmounted(() => offDl?.())
   gap: 8px;
   padding: 3px 0 3px 10px;
   font-size: 12px;
+}
+.crumb {
+  cursor: pointer;
+  color: var(--accent-2);
+  font-size: 13px;
+}
+.crumb:hover {
+  text-decoration: underline;
+}
+.crumb.muted {
+  color: var(--text-dim);
+}
+.crumb.active {
+  color: var(--text-strong);
+  font-weight: 600;
+  cursor: default;
+}
+.custom-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px dashed var(--border);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.custom-dir-row:hover {
+  background: var(--bg-hover);
 }
 </style>

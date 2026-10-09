@@ -40,5 +40,9 @@ export default {
   'm.models.invalidPath': ['非法路径', 'Invalid path'],
   'm.models.errBadCategory': ['未知的模型类别：{category}', 'Unknown model category: {category}'],
   'm.models.errMoveMissing': ['源文件不存在，可能已被移动或删除', 'The source file does not exist; it may have been moved or deleted'],
-  'm.models.errMoveExists': ['{category} 目录下已存在同名文件 {name}，请先处理后再移动', '{category} already contains a file named {name}; please handle it before moving']
+  'm.models.errMoveExists': ['{category} 目录下已存在同名文件 {name}，请先处理后再移动', '{category} already contains a file named {name}; please handle it before moving'],
+  'm.models.errDirInvalid': ['目录名称无效：不能为空、不能以 . 开头或包含 ..', 'Invalid directory name: must not be empty, start with ".", or contain ".."'],
+  'm.models.errDirReserved': ['{name} 是系统保留的模型分类，无法创建', '{name} is a reserved model category and cannot be created'],
+  'm.models.errDirExists': ['目录已存在：{name}', 'Directory already exists: {name}'],
+  'm.ipc.log.dirCreated': ['已创建模型目录：{dir}', 'Created model directory: {dir}']
 } as const satisfies MessageTable

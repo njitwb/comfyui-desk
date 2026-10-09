@@ -83,6 +83,68 @@ describe('scanModels', () => {
   })
 })
 
+describe('自定义目录', () => {
+  it('customTopLevelDirs 只返回非固定分类的子目录', () => {
+    fs.mkdirSync(path.join(modelsRoot, 'checkpoints'), { recursive: true })
+    fs.mkdirSync(path.join(modelsRoot, '我的收藏'), { recursive: true })
+    fs.mkdirSync(path.join(modelsRoot, '.hiddendir'), { recursive: true })
+    fs.writeFileSync(path.join(modelsRoot, 'a.txt'), 'x')
+    expect(models.customTopLevelDirs()).toEqual(['我的收藏'])
+  })
+
+  it('modelCategories 包含内置类别与自定义顶层目录', () => {
+    fs.mkdirSync(path.join(modelsRoot, '自定义'), { recursive: true })
+    const cats = models.modelCategories()
+    expect(cats).toContain('checkpoints')
+    expect(cats).toContain('自定义')
+  })
+
+  it('listModelDir 根视图包含内置分类与自定义目录', () => {
+    fs.mkdirSync(path.join(modelsRoot, 'checkpoints'), { recursive: true })
+    fs.mkdirSync(path.join(modelsRoot, '我的收藏'), { recursive: true })
+    touch(path.join(modelsRoot, 'root.bin'), 1000)
+    const root = models.listModelDir('')
+    const dirs = root.dirs.map(d => d.name)
+    expect(dirs).toContain('checkpoints')
+    expect(dirs).toContain('我的收藏')
+    expect(root.files.map(f => f.name)).toEqual(['root.bin'])
+  })
+
+  it('listModelDir 子目录返回其下子目录与文件', () => {
+    fs.mkdirSync(path.join(modelsRoot, '我的收藏', 'lora'), { recursive: true })
+    touch(path.join(modelsRoot, '我的收藏', 'a.safetensors'), 1000)
+    touch(path.join(modelsRoot, '我的收藏', 'b.safetensors'), 3000)
+    const sub = models.listModelDir('我的收藏')
+    expect(sub.dirs.map(d => d.name)).toEqual(['lora'])
+    expect(sub.files.map(f => f.name)).toEqual(['b.safetensors', 'a.safetensors'])
+  })
+
+  it('createModelDir 支持顶层与嵌套子目录', () => {
+    models.createModelDir('我的收藏')
+    models.createModelDir('我的收藏/lora')
+    expect(fs.existsSync(path.join(modelsRoot, '我的收藏', 'lora'))).toBe(true)
+  })
+
+  it('createModelDir 拒绝固定分类名 / 非法名 / 重复目录', () => {
+    expect(() => models.createModelDir('checkpoints')).toThrow()
+    expect(() => models.createModelDir('')).toThrow()
+    expect(() => models.createModelDir('.hidden')).toThrow()
+    expect(() => models.createModelDir('a/../b')).toThrow()
+    models.createModelDir('我的收藏')
+    expect(() => models.createModelDir('我的收藏')).toThrow()
+  })
+
+  it('moveModel 允许迁入自定义顶层目录', () => {
+    fs.mkdirSync(path.join(modelsRoot, 'checkpoints'), { recursive: true })
+    models.createModelDir('我的收藏')
+    const src = path.join(modelsRoot, 'checkpoints', 'm.safetensors')
+    touch(src, 1000)
+    const dest = models.moveModel(src, '我的收藏')
+    expect(dest).toBe(path.join(modelsRoot, '我的收藏', 'm.safetensors'))
+    expect(fs.existsSync(path.join(modelsRoot, '我的收藏', 'm.safetensors'))).toBe(true)
+  })
+})
+
 describe('在线模型库搜索', () => {
   it('HF 搜索站点随镜像开关切换，关键词编码，走相关度排序', () => {
     expect(models.hfSearchUrl('flux', true)).toBe('https://hf-mirror.com/api/models?search=flux&limit=30')

@@ -59,6 +59,8 @@ const api: import('../shared/api').LauncherApi = {
     revision: string,
     useMirror: boolean
   ) => ipcRenderer.invoke(IPC.modelsOnlineFiles, source, repoId, revision, useMirror),
+  listModelDir: (rel: string) => ipcRenderer.invoke(IPC.modelsListDir, rel),
+  createModelDir: (rel: string) => ipcRenderer.invoke(IPC.modelsCreateDir, rel),
   // downloads
   listDownloads: () => ipcRenderer.invoke(IPC.downloadsList),
   startDownload: (o: import('../shared/api').DownloadStart) => ipcRenderer.invoke(IPC.downloadsStart, o),

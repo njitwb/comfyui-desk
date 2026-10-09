@@ -110,6 +110,18 @@ export interface ModelCategory {
   files: ModelItem[]
 }
 
+/** 模型目录树中的子目录项（relPath 为相对 models 根的子路径） */
+export interface ModelDir {
+  name: string
+  relPath: string
+}
+
+/** 模型库自定义目录某一层的列表内容 */
+export interface ModelDirContent {
+  dirs: ModelDir[]
+  files: ModelItem[]
+}
+
 export type DownloadStatus = 'downloading' | 'paused' | 'completed' | 'error'
 
 export interface DownloadTask {
@@ -281,6 +293,10 @@ export interface LauncherApi {
     revision: string,
     useMirror: boolean
   ): Promise<OnlineModelFile[]>
+  /** 列出模型库某一层（relPath 空串 = 根）下的子目录与文件，用于树 + 面包屑浏览 */
+  listModelDir(rel: string): Promise<ModelDirContent>
+  /** 创建模型库目录（支持嵌套子路径） */
+  createModelDir(rel: string): Promise<void>
   // downloads（下载管理：可暂停/继续/取消，实时进度）
   listDownloads(): Promise<DownloadTask[]>
   startDownload(o: DownloadStart): Promise<DownloadTask>
@@ -369,6 +385,8 @@ export const IPC = {
   modelsMove: 'models:move',
   modelsOnlineSearch: 'models:onlineSearch',
   modelsOnlineFiles: 'models:onlineFiles',
+  modelsListDir: 'models:listDir',
+  modelsCreateDir: 'models:createDir',
   // downloads
   downloadsList: 'downloads:list',
   downloadsStart: 'downloads:start',

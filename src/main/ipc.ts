@@ -10,7 +10,7 @@ import { listPythons } from './python'
 import { comfy } from './process'
 import { syncThemeToComfy, watchComfyTheme } from './comfy-theme'
 import { installComfyUI, updateComfyUI, listComfyVersions, listTorchIndexes, listTorchVariants, installTorch, checkComfyUpdate } from './installer'
-import { scanModels, deleteModel, moveModel, modelCategories, searchOnlineModels, listOnlineModelFiles } from './models'
+import { scanModels, deleteModel, moveModel, modelCategories, listModelDir, createModelDir, searchOnlineModels, listOnlineModelFiles } from './models'
 import {
   initDownloads, listDownloads, startDownload, pauseDownload, resumeDownload, cancelDownload,
   pauseAllDownloads, resumeAllDownloads, cancelAllDownloads, inferCategory
@@ -245,6 +245,11 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.modelsOnlineFiles, (_e, source: ModelSource, repoId: string, revision: string, useMirror: boolean) =>
     listOnlineModelFiles(source, repoId, revision, useMirror)
   )
+  ipcMain.handle(IPC.modelsListDir, (_e, rel: string) => listModelDir(rel))
+  ipcMain.handle(IPC.modelsCreateDir, (_e, rel: string) => {
+    createModelDir(rel)
+    comfy.pushLog('sys', t('m.ipc.log.dirCreated', { dir: rel }))
+  })
 
   // ---- downloads（下载管理器）----
   initDownloads((list) => send(IPC.downloadsEvent, list))

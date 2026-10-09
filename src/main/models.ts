@@ -3,7 +3,7 @@ import path from 'node:path'
 import https from 'node:https'
 import { paths } from './settings'
 import { t } from './i18n'
-import type { ModelCategory, ModelItem, ModelSource, OnlineModel, OnlineModelFile, OnlineSearchResult } from '../shared/api'
+import type { ModelCategory, ModelDirContent, ModelItem, ModelSource, OnlineModel, OnlineModelFile, OnlineSearchResult } from '../shared/api'
 
 const CATEGORIES = [
   'checkpoints', 'clip', 'clip_vision', 'configs', 'controlnet', 'diffusion_models',
@@ -52,7 +52,7 @@ export function deleteModel(relPath: string): void {
 export function moveModel(relPath: string, category: string): string {
   const root = paths().models
   if (!path.resolve(relPath).startsWith(path.resolve(root))) throw new Error(t('m.models.invalidPath'))
-  if (!CATEGORIES.includes(category)) throw new Error(t('m.models.errBadCategory', { category }))
+  if (!modelCategories().includes(category)) throw new Error(t('m.models.errBadCategory', { category }))
   if (!fs.existsSync(relPath)) throw new Error(t('m.models.errMoveMissing', { path: relPath }))
   const name = path.basename(relPath)
   const dest = path.join(path.resolve(root), category, name)
@@ -70,7 +70,72 @@ export function moveModel(relPath: string, category: string): string {
 }
 
 export function modelCategories(): string[] {
-  return CATEGORIES
+  return [...CATEGORIES, ...customTopLevelDirs()]
+}
+
+/** 判断名称是否隐藏项（点开头） */
+function isHidden(name: string): boolean {
+  return name.startsWith('.')
+}
+
+/** 扫描 models 根下的自定义顶层目录（非隐藏、非固定分类的子目录） */
+export function customTopLevelDirs(): string[] {
+  const root = paths().models
+  if (!fs.existsSync(root)) return []
+  const dirs: string[] = []
+  for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!e.isDirectory() || isHidden(e.name) || CATEGORIES.includes(e.name)) continue
+    dirs.push(e.name)
+  }
+  return dirs.sort()
+}
+
+/** 把相对 models 根的子路径解析为绝对路径，并校验未越出根目录 */
+function safeResolve(relPath: string): string {
+  const root = paths().models
+  const full = path.resolve(root, relPath || '')
+  if (full !== root && !full.startsWith(root + path.sep)) throw new Error(t('m.models.invalidPath'))
+  return full
+}
+
+/** 列出模型库某一层：相对路径 relPath（空串为根）下的子目录与文件（含内置分类与自定义目录） */
+export function listModelDir(relPath: string): ModelDirContent {
+  const dir = safeResolve(relPath)
+  if (!fs.existsSync(dir)) return { dirs: [], files: [] }
+  const dirs: ModelDirContent['dirs'] = []
+  const files: ModelItem[] = []
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (isHidden(e.name)) continue
+    const childRel = relPath ? `${relPath}/${e.name}` : e.name
+    if (e.isDirectory()) {
+      dirs.push({ name: e.name, relPath: childRel })
+      continue
+    }
+    try {
+      const full = path.join(dir, e.name)
+      const st = fs.statSync(full)
+      files.push({ name: e.name, relPath: childRel, category: '', size: st.size, mtime: st.mtimeMs })
+    } catch {
+      /* ignore */
+    }
+  }
+  dirs.sort((a, b) => a.name.localeCompare(b.name))
+  files.sort((a, b) => b.mtime - a.mtime)
+  return { dirs, files }
+}
+
+/** 创建模型库自定义目录（支持嵌套子路径，在根下禁止使用固定分类名） */
+export function createModelDir(relPath: string): void {
+  const name = (relPath || '').trim()
+  if (!name) throw new Error(t('m.models.errDirInvalid'))
+  const segments = name.split('/')
+  if (segments.some(s => !s || s === '.' || s === '..' || isHidden(s))) throw new Error(t('m.models.errDirInvalid'))
+  if (segments[0] === '..') throw new Error(t('m.models.errDirInvalid'))
+  const full = safeResolve(name)
+  const top = segments[0]
+  if (segments.length === 1 && CATEGORIES.includes(top)) throw new Error(t('m.models.errDirReserved', { name: top }))
+  if (fs.existsSync(full)) throw new Error(t('m.models.errDirExists', { name: top }))
+  fs.mkdirSync(full, { recursive: true })
 }
 
 // ---- 在线模型库：HuggingFace（可切国内镜像 hf-mirror.com）与魔搭 ModelScope（国内直连） ----

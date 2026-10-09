@@ -4,3 +4,4 @@ dist-types
 *.log
 resources
 release
+.trae
