@@ -3,6 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { mkTmpDir, rmTmpDir, electronMockFactory, freshImport } from './helpers'
 
+const IS_WIN = process.platform === 'win32'
+
 const h = vi.hoisted(() => ({ userData: '' }))
 vi.mock('electron', () => electronMockFactory(() => h.userData))
 
@@ -155,7 +157,7 @@ describe('paths', () => {
     const p = settings.paths({ ...settings.loadSettings(), installPath: root, modelPath: '' })
     expect(p.root).toBe(root)
     expect(p.comfy).toBe(path.join(root, 'ComfyUI'))
-    expect(p.venvPython).toBe(path.join(root, '.venv', 'Scripts', 'python.exe'))
+    expect(p.venvPython).toBe(path.join(root, '.venv', IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python'))
     expect(p.customNodes).toBe(path.join(root, 'ComfyUI', 'custom_nodes'))
     expect(p.models).toBe(path.join(root, 'ComfyUI', 'models'))
     expect(p.workflows).toBe(path.join(root, 'ComfyUI', 'user', 'default', 'workflows'))

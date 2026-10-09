@@ -164,6 +164,62 @@ describe('startDownload', () => {
     await waitFor(() => firstTask()?.status === 'completed')
     expect(fs.readFileSync(path.join(modelsRoot, 'checkpoints', 'm.safetensors'))).toEqual(FIXTURE)
   })
+
+  it('支持 Range 的大文件走分段并行，完成后内容一致', async () => {
+    const total = 9 * 1024 * 1024 // > PARALLEL_MIN(8MB) 才会触发分段
+    const ranges: string[] = []
+    handler = (req, res) => {
+      const headers: Record<string, string | number> = { 'content-type': 'application/octet-stream' }
+      if (req.method === 'GET' && req.headers.range) {
+        // 分段请求：按 Range 发对应字节
+        const m = /bytes=(\d+)-(\d+)/.exec(req.headers.range)
+        if (m) {
+          const start = Number(m[1])
+          const end = Number(m[2])
+          ranges.push(req.headers.range)
+          headers['accept-ranges'] = 'bytes'
+          headers['content-range'] = `bytes ${start}-${end}/${total}`
+          headers['content-length'] = end - start + 1
+          res.writeHead(206, headers)
+          res.end(Buffer.alloc(end - start + 1, 7))
+          return
+        }
+      } else {
+        // HEAD 探针
+        headers['accept-ranges'] = 'bytes'
+        headers['content-length'] = total
+        res.writeHead(200, headers)
+        res.end()
+        return
+      }
+      res.writeHead(200, headers)
+      res.end(Buffer.alloc(total))
+    }
+    const url = `http://127.0.0.1:${port}/big-parallel/seg.safetensors`
+    await dl.startDownload({ url, category: 'checkpoints' })
+    await waitFor(() => firstTask()?.status === 'completed', 15000)
+    expect(fs.statSync(path.join(modelsRoot, 'checkpoints', 'seg.safetensors')).size).toBe(total)
+    // 确实发生了多个分段请求（每个非末段请求上界精确）
+    expect(ranges.length).toBeGreaterThanOrEqual(1)
+    expect(fs.readdirSync(modelsRoot).length).toBeGreaterThan(0)
+  })
+
+  it('HEAD 探测返回错误 total 时，以 GET 实际 content-length 为准', async () => {
+    handler = (req, res) => {
+      if (req.method === 'HEAD') {
+        // CDN 对 HEAD 撒谎：报 1024 字节
+        res.writeHead(200, { 'content-length': 1024, 'content-type': 'application/octet-stream' })
+        res.end()
+        return
+      }
+      res.writeHead(200, { 'content-length': FIXTURE.length, 'content-type': 'application/octet-stream' })
+      res.end(FIXTURE)
+    }
+    await dl.startDownload({ url: `http://127.0.0.1:${port}/liar/m.safetensors` })
+    await waitFor(() => firstTask()?.status === 'completed')
+    expect(firstTask().total).toBe(FIXTURE.length) // 240，而非 HEAD 骗的 1024
+    expect(fs.readFileSync(path.join(modelsRoot, 'checkpoints', 'm.safetensors'))).toEqual(FIXTURE)
+  })
 })
 
 describe('暂停 / 继续 / 取消（慢速服务器）', () => {

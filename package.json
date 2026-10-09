@@ -16,7 +16,8 @@
     "prepare:python": "node scripts/prepare-python.mjs",
     "prepare:git": "node scripts/prepare-git.mjs",
     "pack": "electron-builder --dir --publish never",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "release:linux": "node scripts/release-linux.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
@@ -33,5 +34,8 @@
   },
   "dependencies": {
     "node-pty": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

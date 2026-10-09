@@ -1,10 +1,12 @@
 import * as pty from 'node-pty'
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import { EventEmitter } from 'node:events'
 import { paths, loadSettings, PIP_MIRRORS } from './settings'
 import { venvEnv } from './python'
 import { gitDir } from './util'
+import { isWin } from './platform'
 
 interface ShellInfo {
   exe: string
@@ -14,15 +16,23 @@ interface ShellInfo {
 
 let shellCache: ShellInfo | null = null
 
-/** shell 优先便携 / 系统 Git Bash（Linux 核心命令可用），缺失时回退 PowerShell */
+/** shell：Windows 优先便携 / 系统 Git Bash，缺失回退 PowerShell；POSIX 用用户 SHELL 或 bash */
 function resolveShell(): ShellInfo {
   if (shellCache) return shellCache
-  const gd = gitDir()
-  const bashCandidates = [gd ? path.join(gd, 'bin', 'bash.exe') : '', 'C:\\Program Files\\Git\\bin\\bash.exe'].filter(Boolean)
-  for (const exe of bashCandidates) {
-    if (fs.existsSync(exe)) return (shellCache = { exe, args: ['--login', '-i'], label: 'Git Bash' })
+  if (isWin) {
+    const gd = gitDir()
+    const bashCandidates = [gd ? path.join(gd, 'bin', 'bash.exe') : '', 'C:\\Program Files\\Git\\bin\\bash.exe'].filter(Boolean)
+    for (const exe of bashCandidates) {
+      if (fs.existsSync(exe)) return (shellCache = { exe, args: ['--login', '-i'], label: 'Git Bash' })
+    }
+    return (shellCache = { exe: 'powershell.exe', args: ['-NoLogo'], label: 'PowerShell' })
   }
-  return (shellCache = { exe: 'powershell.exe', args: ['-NoLogo'], label: 'PowerShell' })
+  // POSIX 用非 login 交互 shell（-i）：login shell（-l）会重读 /etc/profile 与 ~/.profile，
+  // 重新构建 PATH，把下方 venvEnv() 注入的 venv bin 前缀丢掉，导致 python/pip 落到系统路径，
+  // 触发 PEP 668 externally-managed 报错。非 login 交互会保留注入的 PATH，venv 才能生效。
+  const shell = process.env.SHELL && fs.existsSync(process.env.SHELL) ? process.env.SHELL : '/bin/bash'
+  const label = path.basename(shell) || 'Terminal'
+  return (shellCache = { exe: shell, args: ['-i'], label })
 }
 
 /** 基于 ConPTY 的交互式终端会话（环境注入 venv PATH 与 pip 镜像） */
@@ -33,7 +43,7 @@ class TermService extends EventEmitter {
   open(cols: number, rows: number): { id: number; shell: string } {
     const s = loadSettings()
     const p = paths()
-    const cwd = fs.existsSync(p.comfy) ? p.comfy : process.env.USERPROFILE || process.cwd()
+    const cwd = fs.existsSync(p.comfy) ? p.comfy : os.homedir()
     const pipIndex = PIP_MIRRORS[s.pipMirror]
     const sh = resolveShell()
     const id = ++this.seq

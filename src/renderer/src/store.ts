@@ -3,7 +3,19 @@ import { api } from './api'
 import { t } from './i18n'
 import type { ComfyInfo, ComfyStatus, LogLine, ProgressEvent, TorchVariant } from '../../shared/api'
 
-const MAX_LOGS = 3000
+const DEFAULT_MAX_LOGS = 5000
+
+/** 日志上限：读取设置 logMaxLines，非法（0/NaN/缺省）时回退默认值 */
+function maxLogs(): number {
+  const v = Number((store.settings as Record<string, unknown> | null)?.['logMaxLines'])
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : DEFAULT_MAX_LOGS
+}
+
+/** 超出上限时丢弃最早的行，避免日志无限增长导致界面卡顿 */
+function trimLogs(): void {
+  const max = maxLogs()
+  if (store.logs.length > max) store.logs.splice(0, store.logs.length - max)
+}
 
 export const store = reactive({
   status: 'stopped' as ComfyStatus,
@@ -60,7 +72,7 @@ export function initStore(): void {
   })
   api.onLog(line => {
     store.logs.push(line)
-    if (store.logs.length > MAX_LOGS) store.logs.splice(0, store.logs.length - MAX_LOGS)
+    trimLogs()
   })
   api.onInstallProgress(e => {
     store.progress = e.percent >= 100 ? null : e
@@ -70,7 +82,7 @@ export function initStore(): void {
     store.settings = await api.getSettings()
     store.status = (await api.getStatus()) as ComfyStatus
     const recent = (await api.recentLogs()) as LogLine[]
-    store.logs.push(...recent.slice(-500))
+    store.logs.push(...recent.slice(-maxLogs()))
   })()
 }
 

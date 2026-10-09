@@ -75,7 +75,9 @@ const api: import('../shared/api').LauncherApi = {
 
   // nodes
   listNodes: () => ipcRenderer.invoke(IPC.nodesList),
-  installNode: (url: string) => ipcRenderer.invoke(IPC.nodesInstall, url),
+  installNodes: (urls: string[], batchId: number) => ipcRenderer.invoke(IPC.nodesInstall, urls, batchId),
+  cancelNodeInstall: (batchId: number) => ipcRenderer.invoke(IPC.nodesCancel, batchId),
+  onNodeItem: (cb: (e: { batchId: number; name: string; status: string; error?: string }) => void) => on(IPC.nodesItem, cb),
   updateNode: (name: string) => ipcRenderer.invoke(IPC.nodesUpdate, name),
   updateAllNodes: () => ipcRenderer.invoke(IPC.nodesUpdateAll),
   removeNode: (name: string) => ipcRenderer.invoke(IPC.nodesRemove, name),

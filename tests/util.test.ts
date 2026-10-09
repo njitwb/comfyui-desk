@@ -25,9 +25,15 @@ describe('splitArgs', () => {
 })
 
 describe('gitExe / gitDir', () => {
-  it('与 resources/git 实际存在状态一致', async () => {
+  it('与平台/资源实际存在状态一致', async () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
+    if (process.platform !== 'win32') {
+      // POSIX 用系统 git，不随包分发
+      expect(gitDir()).toBeNull()
+      expect(gitExe()).toBe('git')
+      return
+    }
     const bundled = fs.existsSync(path.join(process.cwd(), 'resources', 'git', 'cmd', 'git.exe'))
     if (bundled) {
       expect(gitDir()).not.toBeNull()

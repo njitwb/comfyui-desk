@@ -15,7 +15,7 @@ import {
   initDownloads, listDownloads, startDownload, pauseDownload, resumeDownload, cancelDownload,
   pauseAllDownloads, resumeAllDownloads, cancelAllDownloads, inferCategory
 } from './downloads'
-import { listNodes, installNode, updateNode, updateAllNodes, removeNode } from './nodes'
+import { listNodes, installMany, createToken, cancelToken, updateNode, updateAllNodes, removeNode } from './nodes'
 import { scanWorkflows, workflowDir, importWorkflow, queueWorkflow, deleteWorkflow } from './workflows'
 import { terminal } from './terminal'
 import { runDiagnostics, repairEnv } from './diagnostics'
@@ -269,14 +269,27 @@ export function registerIpc(): void {
   })
 
   // ---- nodes ----
+  const nodeTokens = new Map<number, import('./nodes').CancelToken>()
   ipcMain.handle(IPC.nodesList, () => listNodes())
-  ipcMain.handle(IPC.nodesInstall, async (_e, url: string) => {
+  ipcMain.handle(IPC.nodesInstall, async (_e, urls: string[], batchId: number) => {
+    const onData = makeStreamLogger(t('m.ipc.tag.nodes'), m => send(IPC.nodesEvent, m))
+    const token = nodeTokens.get(batchId) ?? createToken()
+    nodeTokens.set(batchId, token)
     try {
-      return await installNode(url, makeStreamLogger(t('m.ipc.tag.nodes'), m => send(IPC.nodesEvent, m)))
+      const { ok, failed } = await installMany(urls, onData, token, (name, status, error) =>
+        send(IPC.nodesItem, { batchId, name, status, error })
+      )
+      return { ok, failed, cancelled: token.cancelled }
     } catch (e) {
       comfy.pushLog('sys', t('m.ipc.log.nodeInstallFailed', { error: (e as Error).message }))
       throw e
+    } finally {
+      nodeTokens.delete(batchId)
     }
+  })
+  ipcMain.handle(IPC.nodesCancel, (_e, batchId: number) => {
+    const token = nodeTokens.get(batchId)
+    if (token) cancelToken(token)
   })
   ipcMain.handle(IPC.nodesUpdate, async (_e, name: string) => {
     try {

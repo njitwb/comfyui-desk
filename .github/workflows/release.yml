@@ -78,11 +78,68 @@ jobs:
             release/*.exe
             release/*.zip
 
+  # Linux（AppImage）打包。needs: windows 仅用于确保同一 Release 已由 windows 创建，
+  # 避免两个 job 并发写同一个 Release 的竞态；构建本身相互独立的速度损失可接受。
+  linux:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # >=22.12：electron-builder 26 内部用 require() 加载纯 ESM 的 @noble/hashes
+          node-version: 22
+          cache: npm
+
+      # node-pty 需原生编译；AppImage 打包与安装运行所需系统库一并补齐
+      - name: 安装打包依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libfuse2 libarchive-tools
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 对齐版本号
+        run: |
+          v="${{ github.event.inputs.version }}"
+          if [ "${{ github.ref_type }}" = "tag" ]; then v="${{ github.ref_name }}"; v="${v#v}"; fi
+          if [ -z "$v" ]; then echo "未指定版本号，沿用 package.json"; exit 0; fi
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "版本号格式错误: $v（应为 x.y.z）"; exit 1; }
+          npm version "$v" --no-git-tag-version --allow-same-version
+
+      - name: 类型检查与单测
+        run: |
+          npm run typecheck
+          npm test
+
+      # release:linux = typecheck → vite 构建 → electron-builder 打 AppImage
+      # CI=true 时脚本不启用国内镜像，直连官方源
+      - name: 打包 AppImage
+        run: npm run release:linux
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: comfyui-desk-linux-x64
+          path: release/*.AppImage
+          if-no-files-found: error
+
+      # 把 AppImage 追加到同一 Release（upsert，不重建）；启用 sha256 供应用内更新校验
+      - name: 发布 AppImage 到 Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          update_release_body: false
+          files: |
+            release/*.AppImage
+
   # 同步发布到 GitCode。必须是同一条 workflow 里的下游 job 直接调用：
   # release-gitcode.yml 的 `release: published` 触发条件对 GITHUB_TOKEN 创建的
   # release 不生效（GitHub 限制：GITHUB_TOKEN 触发的事件不产生新的 workflow run）
   publish-gitcode:
-    needs: windows
+    needs: [windows, linux]
     if: github.ref_type == 'tag'
     uses: ./.github/workflows/release-gitcode.yml
     with:

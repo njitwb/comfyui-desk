@@ -8,22 +8,8 @@ directories:
 files:
   - dist/**
 
-# 便携 Python / git 随包分发(路径与 bundledPython()/gitDir() 探测一致)
-extraResources:
-  - from: resources/python
-    to: python
-  - from: resources/git
-    to: git
-
-asar: true
-
-# node-pty 随包附带 N-API 预编译二进制，打包无需本机 C++ 工具链重建
-npmRebuild: false
-
-# 构建期 electron 二进制下载镜像(国内)
-electronDownload:
-  mirror: https://npmmirror.com/mirrors/electron/
-
+# 便携 Python / git 仅随 Windows 包分发（路径与 bundledPython()/gitDir() 探测一致）；
+# POSIX 平台（Linux/macOS）使用系统 Python 与 git，随包不内置
 win:
   target:
     - target: nsis
@@ -31,6 +17,11 @@ win:
     - target: zip
       arch: [x64]
   artifactName: ${name}-${version}-${arch}.${ext}
+  extraResources:
+    - from: resources/python
+      to: python
+    - from: resources/git
+      to: git
 
 nsis:
   oneClick: false
@@ -43,3 +34,15 @@ nsis:
   shortcutName: ComfyUI 桌面管家
   # 升级 / 重装时保留安装目录下的 ComfyUI-Runtime（默认卸载器是 RMDir /r 整目录删除）
   include: build/installer.nsh
+
+# Linux（deepin / Ubuntu 等 Debian 系）：AppImage 自包含、可下载即运行，配合内置更新流程
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Graphics
+  maintainer: wangbo
+  synopsis: ComfyUI 一站式桌面管家
+  description: ComfyUI 一站式桌面管家
+  artifactName: ${name}-${version}-${arch}.${ext}
+  icon: build/icon.png

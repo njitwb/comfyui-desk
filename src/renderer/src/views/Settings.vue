@@ -20,7 +20,8 @@ const pipMirrors: { v: string; label: MessageKey }[] = [
   { v: 'default', label: 'settings.mirror.pip.pypi' },
   { v: 'tuna', label: 'settings.mirror.pip.tuna' },
   { v: 'aliyun', label: 'settings.mirror.pip.aliyun' },
-  { v: 'ustc', label: 'settings.mirror.pip.ustc' }
+  { v: 'ustc', label: 'settings.mirror.pip.ustc' },
+  { v: 'tencent', label: 'settings.mirror.pip.tencent' }
 ]
 
 /** 高级启动参数控件描述（分组参照官方 startup-flags） */
@@ -544,7 +545,12 @@ async function applyLocale(v: Locale): Promise<void> {
         </div>
         <div class="field">
           <label>{{ t('settings.env.python') }}</label>
-          <input v-model="(s.pythonPath as string)" type="text" placeholder="C:\...\python.exe" />
+          <input v-model="(s.pythonPath as string)" type="text" placeholder="选择 Python 解释器路径" />
+        </div>
+        <div class="field">
+          <label>{{ t('settings.env.logMaxLines') }}</label>
+          <input v-model.number="(s.logMaxLines as number)" type="number" min="1" max="100000" />
+          <div class="hint">{{ t('settings.env.logMaxLines.hint') }}</div>
         </div>
       </div>
     </div>

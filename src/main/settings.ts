@@ -4,9 +4,10 @@ import path from 'node:path'
 import { buildAdvancedArgs, type AdvArgs } from '../shared/advArgs'
 import type { Locale } from '../shared/i18n/types'
 import type { Theme } from '../shared/appearance'
+import { isWin, venvScriptsRel, venvPythonFileName } from './platform'
 
 export type GitMirror = 'github' | 'gitcode' | 'custom'
-export type PipMirror = 'default' | 'tuna' | 'aliyun' | 'ustc'
+export type PipMirror = 'default' | 'tuna' | 'aliyun' | 'ustc' | 'tencent'
 export type TorchIndex = string
 export type TorchMirror = 'official' | 'aliyun'
 
@@ -37,6 +38,8 @@ export interface Settings {
   locale: Locale | ''
   /** 是否与 ComfyUI 内置主题双向联动 */
   syncComfyTheme: boolean
+  /** 运行日志保留的最大行数（超出自动丢弃最早的行，0/非法值回退默认 5000） */
+  logMaxLines: number
 }
 
 const defaults: Settings = {
@@ -60,7 +63,8 @@ const defaults: Settings = {
   autoLaunchOffMigrated: false,
   theme: '',
   locale: '',
-  syncComfyTheme: true
+  syncComfyTheme: true,
+  logMaxLines: 5000
 }
 
 export const REPO_URLS: Record<Exclude<GitMirror, 'custom'>, string> = {
@@ -72,7 +76,8 @@ export const PIP_MIRRORS: Record<PipMirror, string> = {
   default: '',
   tuna: 'https://pypi.tuna.tsinghua.edu.cn/simple',
   aliyun: 'https://mirrors.aliyun.com/pypi/simple/',
-  ustc: 'https://mirrors.ustc.edu.cn/pypi/simple'
+  ustc: 'https://mirrors.ustc.edu.cn/pypi/simple',
+  tencent: 'https://mirrors.cloud.tencent.com/pypi/simple/'
 }
 
 /** 网络不可用时的兜底 torch 源列表 */
@@ -180,9 +185,9 @@ export interface AppPaths {
   workflows: string
 }
 
-/** 默认安装目录：打包版放在 exe 旁（便携场景），开发模式放文档目录 */
+/** 默认安装目录：Windows 打包版放在 exe 旁（便携场景）；POSIX 打包目录（/opt 等）通常不可写，统一放文档目录 */
 export function defaultRoot(): string {
-  if (app.isPackaged) return path.join(path.dirname(app.getPath('exe')), 'ComfyUI-Runtime')
+  if (app.isPackaged && isWin) return path.join(path.dirname(app.getPath('exe')), 'ComfyUI-Runtime')
   return path.join(app.getPath('documents'), 'ComfyUI-Runtime')
 }
 
@@ -193,8 +198,8 @@ export function paths(s: Settings = loadSettings()): AppPaths {
     root,
     comfy,
     venv: path.join(root, '.venv'),
-    venvPython: path.join(root, '.venv', 'Scripts', 'python.exe'),
-    venvScripts: path.join(root, '.venv', 'Scripts'),
+    venvPython: path.join(root, '.venv', venvScriptsRel(), venvPythonFileName()),
+    venvScripts: path.join(root, '.venv', venvScriptsRel()),
     customNodes: path.join(comfy, 'custom_nodes'),
     models: s.modelPath || path.join(comfy, 'models'),
     workflows: path.join(comfy, 'user', 'default', 'workflows')

@@ -143,7 +143,7 @@ api.onDownloadTaken(({ filename }) => {
       <!-- 工作台常驻挂载（v-show）：webview 脱离 DOM 后会重载，不能走 KeepAlive 挂起 -->
       <Workbench v-show="page === 'workbench'" @nav="(k: PageKey) => (page = k)" />
       <!-- 状态型页面缓存实例（开关切换不丢终端输出/安装进度）；:key 必加，否则 KeepAlive 会缓存错配 -->
-      <KeepAlive :include="['Terminal', 'Logs', 'Install', 'Tools']">
+      <KeepAlive :include="['Terminal', 'Logs', 'Install', 'Tools', 'Nodes']">
         <component :is="current" :key="page" v-if="page !== 'workbench'" @nav="(k: PageKey) => (page = k)" />
       </KeepAlive>
     </main>

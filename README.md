@@ -1,8 +1,8 @@
 # ComfyUI 桌面管家 · ComfyUI Desk
 
-> Windows 上的一站式 ComfyUI 管理工具：安装部署、启动停止、模型下载、节点维护、工作流运行，全部图形化。
+> 跨平台（Windows / Linux）的一站式 ComfyUI 管理工具：安装部署、启动停止、模型下载、节点维护、工作流运行，全部图形化。
 
-![platform](https://img.shields.io/badge/platform-Windows%20x64-blue)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 **简体中文** | [**English**](#english)
@@ -108,6 +108,46 @@ npm run dev
 
 开发模式下可使用系统已安装的 Python 3.10+；也可运行 `npm run prepare:python` 准备内置便携 Python。
 
+### Linux 支持与打包发布（AppImage）
+
+本项目已适配 Linux（Deepin / Ubuntu 等 Debian 系），发布产物为 **AppImage**，下载赋权后即可直接运行，无需安装：
+
+```bash
+chmod +x comfyui-desk-x.y.z-x64.AppImage
+./comfyui-desk-x.y.z-x64.AppImage
+```
+
+> Linux 未随包内置便携 Python / Git，依赖系统环境；运行时装在文档目录 `~/Documents/ComfyUI-Runtime`（Windows 则装在程序目录内 `ComfyUI-Runtime`）。安装时应用会用系统 Python 创建独立 `venv`（避免 PEP 668 `externally-managed-environment`），内置终端默认激活该 venv，掉线系统 pip。
+
+**运行依赖（Linux，需用户自行安装）**
+
+与 Windows 不同，Linux 发布包**不内置** Python / Git，首次使用前请安装：
+
+```bash
+# Debian / Deepin / Ubuntu 等
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv git
+# 仅当运行 AppImage 提示缺少 FUSE 时需要
+sudo apt-get install -y libfuse2
+```
+
+- `python3`（≥ 3.10）与 `python3-venv`：应用用系统 Python 创建隔离 venv 安装 ComfyUI 依赖
+- `git`：克隆 ComfyUI 源码与自定义节点
+- `libfuse2`：AppImage 运行所需的 FUSE 支持（多数桌面环境已内置）
+
+> 说明：`node-pty` 等原生模块在**打包时已编译进 AppImage**，用户端无需编译器；`g++`/`build-essential` 仅打包者/CI 需要。ComfyUI 运行依赖（PyTorch 等）体积大且随显卡/CUDA 变体而变，任何平台都不内置，安装时经 pip 在线下载（内置清华/阿里云/USTC/腾讯云等镜像）。若希望像 Windows 那样把便携 Python 也打进 AppImage，可作为后续增强，但会显著增大包体积并需改造 Linux 运行时探测逻辑。
+
+**本地打包**
+
+```bash
+npm run release:linux            # typecheck → 构建 → electron-builder 打 AppImage
+npm run release:linux -- 1.2.3   # 先提升版本号再打包
+```
+
+**前置条件**：Node.js ≥ 22.12（electron-builder 需 `require(esm)` 加载 `@noble/hashes`）；`g++`/`make` 及 `build-essential`（编译 node-pty 原生模块）。
+
+**CI 自动发布**：推 `v*` 标签或手动触发 `.github/workflows/release.yml`，`linux` job 在 GitHub Actions 上产出 AppImage 并追加到同一 Release；应用内更新按 Releases API 校验 sha256 下载。
+
 ### 开源协议
 
 [MIT](LICENSE)
@@ -212,6 +252,45 @@ npm run dev
 ```
 
 In development you can use a system Python 3.10+; run `npm run prepare:python` to fetch the bundled portable Python instead.
+
+### Linux support (AppImage)
+
+Linux (Deepin / Ubuntu and other Debian-based distros) is supported and ships as a self-contained **AppImage** — make it executable and run it:
+
+```bash
+chmod +x comfyui-desk-x.y.z-x64.AppImage && ./comfyui-desk-x.y.z-x64.AppImage
+```
+
+On Linux, instead of bundling portable Python/Git, the app relies on the system and installs the runtime into `~/Documents/ComfyUI-Runtime` (on Windows it lives inside the app folder). It creates an isolated `venv` from your system Python to avoid the PEP 668 `externally-managed-environment` error, and the built-in terminal activates that venv by default.
+
+**Runtime dependencies (Linux — install these yourself)**
+
+Unlike the Windows build, the Linux package does **not** bundle Python or Git:
+
+```bash
+# Debian / Deepin / Ubuntu, etc.
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv git
+# Only if running the AppImage reports missing FUSE
+sudo apt-get install -y libfuse2
+```
+
+- `python3` (≥ 3.10) + `python3-venv` — used to create the isolated venv for ComfyUI dependencies
+- `git` — to clone the ComfyUI source and custom nodes
+- `libfuse2` — FUSE support needed to run the AppImage (preinstalled on most desktop environments)
+
+> Note: native modules like `node-pty` are compiled **into the AppImage at build time**, so end users need no compiler (`g++`/`build-essential` are only required for packagers/CI). ComfyUI runtime deps (e.g. PyTorch) are huge and depend on the GPU/CUDA variant, so they are never bundled on any platform — they are downloaded via pip during installation (with Tsinghua/Aliyun/USTC/Tencent mirrors built in). Bundling a portable Python into the AppImage (as Windows does) could be a future enhancement, at the cost of a noticeably larger package and a rewrite of the Linux runtime detection.
+
+**Build locally**
+
+```bash
+npm run release:linux            # typecheck → build → electron-builder AppImage
+npm run release:linux -- 1.2.3   # bump to a specific version first
+```
+
+**Prerequisites**: Node.js ≥ 22.12 (electron-builder needs `require(esm)`), and `g++`/`make` (`build-essential`) to compile the node-pty native module.
+
+**CI releases**: pushing a `v*` tag or a manual `workflow_dispatch` run of `.github/workflows/release.yml` makes the `linux` job build the AppImage and publish it to the same Release; in-app updates download it via the Releases API with sha256 verification.
 
 ### License
 

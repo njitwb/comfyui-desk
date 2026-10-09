@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import https from 'node:https'
-import { run, gitExe, compareSemver } from './util'
+import { run, gitExe, compareSemver, type RunResult } from './util'
 import {
   paths,
   loadSettings,
@@ -18,6 +18,7 @@ import { ensureVenv, getPyTag, pip } from './python'
 import { detectGpu } from './gpu'
 import type { ProgressEvent, InstallOptions } from '../shared/api'
 import { t } from './i18n'
+import { isWin, wheelPlatformRe } from './platform'
 
 export type ProgressFn = (e: ProgressEvent) => void
 
@@ -241,9 +242,9 @@ async function downloadSegmented(
   }
 }
 
-/** 在平铺 wheel 目录页中挑选指定包最新版、匹配当前解释器标签的 win_amd64 wheel */
+/** 在平铺 wheel 目录页中挑选指定包最新版、匹配当前解释器标签与平台标签的 wheel */
 function pickWheel(html: string, baseUrl: string, pkg: string, pyTag: string): { url: string; file: string } | null {
-  const re = new RegExp(`${pkg}-(\\d[\\d.]*)[^"'<>\\s]*-${pyTag}-[^"'<>\\s]*-win_amd64\\.whl`, 'gi')
+  const re = new RegExp(`${pkg}-(\\d[\\d.]*)[^"'<>\\s]*-${pyTag}-[^"'<>\\s]*-${wheelPlatformRe()}\\.whl`, 'gi')
   let best: { file: string; ver: string } | null = null
   for (const m of html.matchAll(re)) {
     const ver = m[1]
@@ -274,7 +275,7 @@ export async function listTorchIndexes(): Promise<string[]> {
 /** 解析某 CUDA/CPU 源下匹配 venv Python 标签的最新 torch 版本（如 2.14.0+cu130） */
 async function latestTorchVersion(idx: string, pyTag: string): Promise<string> {
   // URL 中 + 常被编码为 %2B 或 HTML 实体 &#43;，匹配后统一还原
-  const re = new RegExp(`torch-([\\d.]+(?:%2B|\\+|&#43;)[a-z0-9.]+|[\\d.]+)-${pyTag}-${pyTag}-win_amd64`, 'gi')
+  const re = new RegExp(`torch-([\\d.]+(?:%2B|\\+|&#43;)[a-z0-9.]+|[\\d.]+)-${pyTag}-${pyTag}-${wheelPlatformRe()}`, 'gi')
   let best = ''
   for (const page of [`https://download.pytorch.org/whl/${idx}/torch/`, `https://mirrors.aliyun.com/pytorch-wheels/${idx}/`]) {
     try {
@@ -414,7 +415,14 @@ async function fetchSource(version: string, on: ProgressFn): Promise<void> {
   emit(on, t('m.installer.stageSource'), t('m.installer.extracting'), 23)
   const tmp = path.join(p.root, '_extract')
   fs.rmSync(tmp, { recursive: true, force: true })
-  const r = await run('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${tmp}' -Force`], { timeoutMs: 300000 })
+  let r: RunResult
+  if (isWin) {
+    r = await run('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${tmp}' -Force`], { timeoutMs: 300000 })
+  } else {
+    // POSIX：优先 unzip，缺失时回退 tar（bsdtar 也能解 zip）
+    r = await run('unzip', ['-o', zipPath, '-d', tmp], { timeoutMs: 300000 })
+    if (r.code !== 0) r = await run('tar', ['-xf', zipPath, '-C', tmp], { timeoutMs: 300000 })
+  }
   if (r.code !== 0) throw new Error(t('m.installer.extractFailed'))
   const inner = fs.readdirSync(tmp).map(d => path.join(tmp, d)).find(d => fs.statSync(d).isDirectory())
   if (!inner) throw new Error(t('m.installer.badArchive'))

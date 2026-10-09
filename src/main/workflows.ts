@@ -87,26 +87,32 @@ export function deleteWorkflow(p: string): void {
   fs.rmSync(assertSafePath(p), { force: true })
 }
 
-/** 弹窗选择 JSON 并复制到工作流目录，重名时自动加序号 */
-export async function importWorkflow(): Promise<WorkflowItem | null> {
+/** 导入工作流（支持多选）：把选中文件复制到工作流目录，返回导入成功的条目列表 */
+export async function importWorkflow(): Promise<WorkflowItem[]> {
   const r = await dialog.showOpenDialog({
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [{ name: t('m.wf.dialogFilter'), extensions: ['json'] }]
   })
-  if (r.canceled || !r.filePaths.length) return null
-  const src = r.filePaths[0]
+  if (r.canceled || !r.filePaths.length) return []
   const dir = workflowDir()
   fs.mkdirSync(dir, { recursive: true })
-  const base = path.basename(src, path.extname(src))
-  let name = base + '.json'
-  let dest = path.join(dir, name)
-  let i = 1
-  while (fs.existsSync(dest)) {
-    name = `${base}_${i++}.json`
-    dest = path.join(dir, name)
+  const items: WorkflowItem[] = []
+  for (const src of r.filePaths) {
+    const base = path.basename(src, path.extname(src))
+    let name = base + '.json'
+    let dest = path.join(dir, name)
+    let i = 1
+    while (fs.existsSync(dest)) {
+      name = `${base}_${i++}.json`
+      dest = path.join(dir, name)
+    }
+    try {
+      fs.copyFileSync(src, dest)
+      const w = scanWorkflows().find(w => w.path === dest)
+      if (w) items.push(w)
+    } catch { /* 单个文件复制失败不影响其余导入 */ }
   }
-  fs.copyFileSync(src, dest)
-  return scanWorkflows().find(w => w.path === dest) || null
+  return items
 }
 
 /** 提取 API 格式 prompt 对象；UI 格式不可直接提交 */

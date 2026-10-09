@@ -109,19 +109,31 @@ describe('deleteWorkflow', () => {
 })
 
 describe('importWorkflow', () => {
-  it('用户取消返回 null', async () => {
-    expect(await workflows.importWorkflow()).toBeNull()
+  it('用户取消返回空数组', async () => {
+    expect(await workflows.importWorkflow()).toEqual([])
   })
 
   it('复制选中文件到工作流目录', async () => {
     const src = path.join(userData, 'pick.json')
     fs.writeFileSync(src, API_WF)
     h.openResult = { canceled: false, filePaths: [src] }
-    const item = await workflows.importWorkflow()
-    expect(item).not.toBeNull()
-    expect(item!.name).toBe('pick.json')
+    const items = await workflows.importWorkflow()
+    expect(items).toHaveLength(1)
+    expect(items[0].name).toBe('pick.json')
     expect(fs.existsSync(path.join(wfRoot, 'pick.json'))).toBe(true)
-    expect(item!.format).toBe('api')
+    expect(items[0].format).toBe('api')
+  })
+
+  it('多选批量导入', async () => {
+    const a = path.join(userData, 'a.json')
+    const b = path.join(userData, 'b.json')
+    fs.writeFileSync(a, API_WF)
+    fs.writeFileSync(b, API_WF)
+    h.openResult = { canceled: false, filePaths: [a, b] }
+    const items = await workflows.importWorkflow()
+    expect(items.map(x => x.name).sort()).toEqual(['a.json', 'b.json'])
+    expect(fs.existsSync(path.join(wfRoot, 'a.json'))).toBe(true)
+    expect(fs.existsSync(path.join(wfRoot, 'b.json'))).toBe(true)
   })
 
   it('重名自动追加序号', async () => {
@@ -129,8 +141,8 @@ describe('importWorkflow', () => {
     const src = path.join(userData, 'pick.json')
     fs.writeFileSync(src, API_WF)
     h.openResult = { canceled: false, filePaths: [src] }
-    const item = await workflows.importWorkflow()
-    expect(item!.name).toBe('pick_1.json')
+    const items = await workflows.importWorkflow()
+    expect(items[0].name).toBe('pick_1.json')
   })
 })
 

@@ -51,6 +51,12 @@ const asset = (name: string, extra: Record<string, unknown> = {}) => ({
   ...extra
 })
 
+const IS_WIN = process.platform === 'win32'
+/** 当前平台的安装包扩展名：Windows=exe，POSIX=AppImage */
+const APP_EXT = IS_WIN ? 'exe' : 'AppImage'
+/** 构造当前平台的安装包文件名（x64 下载包） */
+const cfg = (base: string) => `comfyui-desk-${base}.${APP_EXT}`
+
 beforeEach(() => {
   h.version = '1.0.0'
   h.mirror = 'github'
@@ -59,7 +65,7 @@ beforeEach(() => {
 
 describe('checkAppUpdate', () => {
   it('远端版本更高时给出更新提示与 release 信息', async () => {
-    mockResponse(release('v1.1.0', { assets: [asset('comfyui-desk-1.1.0-x64.exe'), asset('comfyui-desk-1.1.0-x64.zip')] }))
+    mockResponse(release('v1.1.0', { assets: [asset(cfg('1.1.0-x64')), asset('comfyui-desk-1.1.0-x64.zip')] }))
     const r = await checkAppUpdate()
     expect(calledUrl()).toBe('https://api.github.com/repos/njitwb/comfyui-desk/releases/latest')
     expect(r.current).toBe('1.0.0')
@@ -69,7 +75,7 @@ describe('checkAppUpdate', () => {
     expect(r.notes).toBe('修复若干问题')
     expect(r.publishedAt).toBe('2026-09-01T10:00:00Z')
     expect(r.error).toBe('')
-    expect(r.asset?.name).toBe('comfyui-desk-1.1.0-x64.exe')
+    expect(r.asset?.name).toBe(cfg('1.1.0-x64'))
     expect(r.asset?.digest).toBe('sha256:' + 'a'.repeat(64))
     expect(r.asset?.size).toBe(80 * 1024 * 1024)
   })
@@ -166,9 +172,9 @@ describe('GitCode 渠道（settings.gitMirror = gitcode）', () => {
 
   it('请求 GitCode 的 releases 列表，取版本号最高的非预发布版本', async () => {
     mockResponse([
-      gcRelease('v1.0.5', { assets: [gcAsset('comfyui-desk-1.0.5-x64.exe')] }),
-      gcRelease('v1.1.0', { assets: [gcAsset('comfyui-desk-1.1.0-x64.exe'), gcAsset('comfyui-desk-v1.1.0.zip')] }),
-      gcRelease('v9.9.9', { prerelease: 1, assets: [gcAsset('comfyui-desk-9.9.9-x64.exe')] })
+      gcRelease('v1.0.5', { assets: [gcAsset(cfg('1.0.5-x64'))] }),
+      gcRelease('v1.1.0', { assets: [gcAsset(cfg('1.1.0-x64')), gcAsset('comfyui-desk-v1.1.0.zip')] }),
+      gcRelease('v9.9.9', { prerelease: 1, assets: [gcAsset(cfg('9.9.9-x64'))] })
     ])
     const r = await checkAppUpdate()
     expect(calledUrl()).toBe('https://gitcode.com/api/v5/repos/njitwb01/comfyui-desk/releases?per_page=30')
@@ -178,7 +184,7 @@ describe('GitCode 渠道（settings.gitMirror = gitcode）', () => {
     expect(r.publishedAt).toBe('2026-09-01T10:00:00Z')
     expect(r.notes).toBe('修复若干问题')
     // 源码包（自动生成的 zip）不会被误当成安装包
-    expect(r.asset?.name).toBe('comfyui-desk-1.1.0-x64.exe')
+    expect(r.asset?.name).toBe(cfg('1.1.0-x64'))
     // GitCode 的资产不带 size / digest：大小靠下载响应补，校验跳过
     expect(r.asset?.size).toBe(0)
     expect(r.asset?.digest).toBe('')
@@ -206,20 +212,20 @@ describe('GitCode 渠道（settings.gitMirror = gitcode）', () => {
 
 describe('pickInstallerAsset', () => {
   it('优先选择 x64 安装包', () => {
-    const picked = pickInstallerAsset([asset('comfyui-desk-1.1.0-ia32.exe'), asset('comfyui-desk-1.1.0-x64.exe')])
-    expect(picked?.name).toBe('comfyui-desk-1.1.0-x64.exe')
+    const picked = pickInstallerAsset([asset(cfg('1.1.0-ia32')), asset(cfg('1.1.0-x64'))])
+    expect(picked?.name).toBe(cfg('1.1.0-x64'))
   })
 
-  it('排除 blockmap 与绿色版 zip', () => {
+  it('排除 blockmap 与源码 zip', () => {
     const picked = pickInstallerAsset([
-      asset('comfyui-desk-1.1.0-x64.exe.blockmap'),
+      asset(`${cfg('1.1.0-x64')}.blockmap`),
       asset('comfyui-desk-1.1.0-x64.zip'),
-      asset('comfyui-desk-1.1.0-x64.exe')
+      asset(cfg('1.1.0-x64'))
     ])
-    expect(picked?.name).toBe('comfyui-desk-1.1.0-x64.exe')
+    expect(picked?.name).toBe(cfg('1.1.0-x64'))
   })
 
-  it('没有 exe 时返回 null', () => {
+  it('没有安装包时返回 null', () => {
     expect(pickInstallerAsset([asset('comfyui-desk-1.1.0-x64.zip')])).toBeNull()
     expect(pickInstallerAsset([])).toBeNull()
     expect(pickInstallerAsset()).toBeNull()

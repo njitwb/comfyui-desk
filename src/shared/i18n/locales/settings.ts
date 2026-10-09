@@ -199,6 +199,7 @@ export default {
   'settings.mirror.pip.tuna': ['清华大学 TUNA', 'Tsinghua TUNA'],
   'settings.mirror.pip.aliyun': ['阿里云', 'Alibaba Cloud'],
   'settings.mirror.pip.ustc': ['中科大 USTC', 'USTC'],
+  'settings.mirror.pip.tencent': ['腾讯云', 'Tencent Cloud'],
   'settings.mirror.torch': ['PyTorch 下载源（安装 / 切换 Torch 时使用）', 'PyTorch download source (used when installing or switching Torch)'],
   'settings.mirror.torch.official': ['PyTorch 官方（download.pytorch.org）', 'PyTorch official (download.pytorch.org)'],
   'settings.mirror.torch.aliyun': ['阿里云镜像（国内推荐）', 'Alibaba Cloud mirror (recommended in China)'],
@@ -214,5 +215,7 @@ export default {
   'settings.env.title': ['环境', 'Environment'],
   'settings.env.torchIndex': ['Torch 源偏好（安装 / 切换 Torch 时使用）', 'Torch index preference (used when installing or switching Torch)'],
   'settings.env.torchIndex.auto': ['自动推荐', 'Auto-recommended'],
-  'settings.env.python': ['Python 解释器（重建 / 修复环境时使用，留空自动选择）', 'Python interpreter (used when rebuilding or repairing the environment; leave empty to auto-select)']
+  'settings.env.python': ['Python 解释器（重建 / 修复环境时使用，留空自动选择）', 'Python interpreter (used when rebuilding or repairing the environment; leave empty to auto-select)'],
+  'settings.env.logMaxLines': ['运行日志最大行数', 'Max log lines'],
+  'settings.env.logMaxLines.hint': ['日志界面最多保留的行数，超出后自动丢弃最早的行（默认 5000，行数越大越占内存）', 'Max lines kept in the logs view; older lines are dropped beyond this (default 5000; larger values use more memory)']
 } as const satisfies MessageTable

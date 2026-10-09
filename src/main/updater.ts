@@ -8,6 +8,7 @@ import { compareSemver } from './util'
 import { loadSettings } from './settings'
 import { comfy } from './process'
 import { t } from './i18n'
+import { isWin } from './platform'
 import type { AppUpdateAsset, AppUpdateInfo, AppUpdateProgress } from '../shared/api'
 
 /** 发布渠道：设置的 git 源为 gitcode 时，版本检查与更新包下载都走 GitCode，不访问 GitHub */
@@ -86,10 +87,11 @@ async function fetchRelease(channel: Channel): Promise<RawRelease | null> {
     )
 }
 
-/** 从 release 资源里挑出可静默安装的安装包（排除 blockmap 与绿色版 zip） */
+/** 从 release 资源里挑出可静默安装的安装包（排除 blockmap；按平台挑选，Linux 优先 AppImage） */
 export function pickInstallerAsset(assets: RawAsset[] = []): RawAsset | null {
-  const exe = assets.filter(a => /\.exe$/i.test(a.name) && !/\.blockmap$/i.test(a.name))
-  return exe.find(a => /x64/i.test(a.name)) || exe[0] || null
+  const pat = isWin ? /\.exe$/i : /\.AppImage$/i
+  const exe = assets.filter(a => pat.test(a.name) && !/\.blockmap$/i.test(a.name))
+  return exe.find(a => /x64|amd64|_x64/i.test(a.name)) || exe[0] || null
 }
 
 function toAsset(a: RawAsset | null): AppUpdateAsset | null {
@@ -254,7 +256,17 @@ export async function installUpdate(on: (e: AppUpdateProgress) => void): Promise
     message: t('m.updater.installing')
   })
 
-  // /S 静默安装 + --updated 升级语义 + --force-run 让安装器装完自动拉起应用
-  spawn(file, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore' }).unref()
+  // Windows：/S 静默安装 + --updated 升级语义 + --force-run 让安装器装完自动拉起应用
+  // Linux：AppImage 赋可执行权限后后台拉起新版本，随后退出交由新版本接管
+  if (isWin) {
+    spawn(file, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore' }).unref()
+  } else {
+    try {
+      fs.chmodSync(file, 0o755)
+    } catch {
+      /* ignore */
+    }
+    spawn(file, ['--updated'], { detached: true, stdio: 'ignore' }).unref()
+  }
   setTimeout(() => app.quit(), 500)
 }

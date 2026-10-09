@@ -47,9 +47,9 @@ async function scan() {
 async function importFile() {
   error.value = ''
   try {
-    const w = (await api.importWorkflow()) as WorkflowItem | null
-    if (w) {
-      showToast(t('wf.toast.imported', { name: w.name }))
+    const ws = (await api.importWorkflow()) as WorkflowItem[]
+    if (ws.length) {
+      showToast(t(ws.length === 1 ? 'wf.toast.imported' : 'wf.toast.importedMany', { name: ws[0].name, n: ws.length }))
       await scan()
     }
   } catch (e) {

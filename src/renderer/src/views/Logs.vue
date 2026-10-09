@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onActivated } from 'vue'
 import { t } from '../i18n'
 import { store } from '../store'
 
@@ -7,6 +7,13 @@ const autoScroll = ref(true)
 const filter = ref('')
 const streamFilter = ref<'all' | 'stdout' | 'stderr' | 'sys'>('all')
 const logEl = ref<HTMLElement | null>(null)
+
+/** 滚动到底部（无论何时进入日志页都定位到最新行） */
+function scrollToBottom(): void {
+  nextTick(() => {
+    if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
+  })
+}
 
 const lines = computed(() =>
   store.logs.filter(l => {
@@ -24,13 +31,14 @@ function fmt(ts: number): string {
 
 watch(
   () => store.logs.length,
-  async () => {
-    if (autoScroll.value) {
-      await nextTick()
-      if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
-    }
+  () => {
+    if (autoScroll.value) scrollToBottom()
   }
 )
+
+onMounted(scrollToBottom)
+// KeepAlive 缓存下切页返回时重新定位到底部
+onActivated(scrollToBottom)
 
 function clearView() {
   store.logs.splice(0)

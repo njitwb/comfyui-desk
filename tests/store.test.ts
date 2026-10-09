@@ -113,13 +113,22 @@ describe('initStore 事件接线', () => {
     expect(apiMock.getInfo).toHaveBeenCalled()
   })
 
-  it('onLog 追加并裁剪到 3000 条', async () => {
+  it('onLog 追加并裁剪到默认 5000 条（可通过 logMaxLines 设置覆盖）', async () => {
     storeMod.initStore()
     await flush()
     const logCb = apiModLog()
-    for (let i = 0; i < 3100; i++) logCb({ ts: i, stream: 'stdout', text: `l${i}` })
-    expect(storeMod.store.logs.length).toBe(3000)
-    expect(storeMod.store.logs[storeMod.store.logs.length - 1].text).toBe('l3099')
+    for (let i = 0; i < 5100; i++) logCb({ ts: i, stream: 'stdout', text: `l${i}` })
+    expect(storeMod.store.logs.length).toBe(5000)
+    expect(storeMod.store.logs[storeMod.store.logs.length - 1].text).toBe('l5099')
+  })
+
+  it('若设置有 logMaxLines 则以设置为上限', async () => {
+    apiMock.getSettings.mockResolvedValueOnce({ port: 8188, logMaxLines: 100 })
+    storeMod.initStore()
+    await flush()
+    const logCb = apiModLog()
+    for (let i = 0; i < 200; i++) logCb({ ts: i, stream: 'stdout', text: `l${i}` })
+    expect(storeMod.store.logs.length).toBe(100)
   })
 
   it('onInstallProgress 100% 时清空进度', async () => {

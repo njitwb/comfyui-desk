@@ -13,6 +13,7 @@ export default {
   'm.nodes.cloning': ['克隆 {url} ...', 'Cloning {url} ...'],
   'm.nodes.cloneFailed': ['克隆失败: {msg}', 'Clone failed: {msg}'],
   'm.nodes.installDone': ['节点安装完成: {name}', 'Node installed: {name}'],
+  'm.nodes.cancelled': ['安装已取消', 'Install cancelled'],
   'm.nodes.notFound': ['节点不存在: {name}', 'Node not found: {name}'],
   'm.nodes.notGitRepo': ['该节点不是 git 仓库，无法更新', 'This node is not a git repository and cannot be updated'],
   'm.nodes.updating': ['更新 {name} ...', 'Updating {name} ...'],

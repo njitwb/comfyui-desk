@@ -17,7 +17,7 @@ export default {
   'install.versionLabel': ['ComfyUI 版本', 'ComfyUI version'],
   'install.versionFail': ['获取版本列表失败', 'Failed to load versions'],
   'install.pathLabel': ['安装路径', 'Install path'],
-  'install.pathPlaceholder': ['例如 D:\\AI\\ComfyUI', 'e.g. D:\\AI\\ComfyUI'],
+  'install.pathPlaceholder': ['例如 /home/user/ComfyUI', 'e.g. /home/user/ComfyUI'],
   'install.pathHint': [
     '默认安装到程序目录下的 ComfyUI-Runtime，可更改为任意位置',
     'Installs to ComfyUI-Runtime under the app folder by default; you can change it to any location'

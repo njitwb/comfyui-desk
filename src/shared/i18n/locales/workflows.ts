@@ -30,6 +30,7 @@ export default {
   'wf.emptyMatch': ['没有匹配「{keyword}」的工作流', 'No workflows match "{keyword}"'],
   'wf.empty': ['暂无工作流文件，可在 ComfyUI 中保存或点击「导入 JSON」', 'No workflow files yet — save one in ComfyUI or click "Import JSON"'],
   'wf.toast.imported': ['已导入 {name}', 'Imported {name}'],
+  'wf.toast.importedMany': ['已导入 {n} 个工作流', 'Imported {n} workflows'],
   'wf.toast.queued': ['已提交运行队列（#{number}）', 'Submitted to the run queue (#{number})'],
   'wf.confirmDelete': ['确认删除工作流？\n{path}', 'Delete this workflow?\n{path}'],
   'wf.toast.deleted': ['已删除 {name}', 'Deleted {name}']

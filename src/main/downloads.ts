@@ -13,14 +13,30 @@ import type { DownloadTask } from '../shared/api'
 /** 模型文件扩展名（用于校验返回内容是否为模型） */
 const MODEL_EXT = /\.(safetensors|ckpt|pt|pth|bin|gguf|onnx|sft)$/i
 
+/** 分段并发拉满单文件吞吐：达到该阈值且服务器支持 Range 才分段；每文件拆 N 段并行 */
+const PARALLEL_MIN = 8 * 1024 * 1024
+const SEG_COUNT = 4
+
+interface Segment {
+  from: number
+  to: number
+  path: string
+}
+
 interface TaskState {
   task: DownloadTask
   lastBytes: number
   lastBytesAt: number
-  req?: http.ClientRequest
-  file?: fs.WriteStream
   /** 主动中断标记：pause / cancel 时 req.destroy 触发的错误不计为失败 */
   halt: 'none' | 'pause' | 'cancel'
+  /** 当前活跃的请求 / 写入流（分段与单连接共用，便于统一暂停/取消） */
+  reqs: http.ClientRequest[]
+  files: fs.WriteStream[]
+  /** 分段信息（存在即表示任务走分段并行下载） */
+  parts?: Segment[]
+  /** 每段当前已写入字节数（相对该段起点），用于前台显示合计进度与断点续传 */
+  partRecv?: number[]
+  partsFile?: string
 }
 
 const states = new Map<string, TaskState>()
@@ -87,11 +103,31 @@ function restore(): void {
       task: { ...t, id: t.id || crypto.randomUUID(), speed: 0 },
       lastBytes: 0,
       lastBytesAt: Date.now(),
-      halt: 'none'
+      halt: 'none',
+      reqs: [],
+      files: []
     }
     // 进度以临时文件实际大小为准（比落盘快照新）
-    const tmp = t.dest + '.downloading'
-    try { if (fs.existsSync(tmp)) st.task.received = fs.statSync(tmp).size } catch { /* noop */ }
+    const metaPath = t.dest + '.segmeta.json'
+    if (fs.existsSync(metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as { total?: number; parts?: { from: number; to: number }[] }
+        if (Array.isArray(meta.parts)) {
+          st.task.total = meta.total || 0
+          st.parts = (meta.parts as { from: number; to: number }[]).map((p, i) => ({ from: p.from, to: p.to, path: `${t.dest}.seg${i}` }))
+          st.partRecv = st.parts.map((_, i) => {
+            const f = `${t.dest}.seg${i}`
+            try { return fs.existsSync(f) ? fs.statSync(f).size : 0 } catch { return 0 }
+          })
+          st.partsFile = metaPath
+          st.task.received = st.partRecv.reduce((a, b) => a + b, 0)
+        }
+      } catch { /* segmeta 损坏则按单连接续传 */ }
+    }
+    if (!st.parts) {
+      const tmp = t.dest + '.downloading'
+      try { if (fs.existsSync(tmp)) st.task.received = fs.statSync(tmp).size } catch { /* noop */ }
+    }
     states.set(t.dest, st)
     if (t.status === 'downloading') {
       resumed++
@@ -192,10 +228,13 @@ function requestOnce(st: TaskState, redirectsLeft: number): Promise<void> {
         return reject(new Error(tr('m.dl.errNotModelFile')))
       }
       const append = res.statusCode === 206 && offset > 0
-      if (!t.total) t.total = Number(res.headers['content-length'] || 0) + (append ? offset : 0)
+      // 以 GET 实际响应为准更新总大小：HEAD 探测/旧值可能不准（如 CDN 对 HEAD 返回错误的 content-length）
+      const cl = Number(res.headers['content-length'] || 0)
+      const realTotal = cl + (append ? offset : 0)
+      if (realTotal > 0 && (!t.total || realTotal !== t.total)) t.total = realTotal
 
       const file = fs.createWriteStream(tmp, { flags: append ? 'a' : 'w' })
-      st.file = file
+      st.files.push(file)
       res.on('data', (d: Buffer) => {
         t.received += d.length
         const now = Date.now()
@@ -210,40 +249,175 @@ function requestOnce(st: TaskState, redirectsLeft: number): Promise<void> {
       file.on('error', reject)
       res.pipe(file)
       file.on('finish', () => {
-        st.file = undefined
-        if (st.halt !== 'none') return resolve()
-        file.close(() => {
-          try {
-            fs.rmSync(t.dest, { force: true })
-            fs.renameSync(tmp, t.dest)
-            t.status = 'completed'
-            if (!t.total) t.total = t.received
-            t.speed = 0
-            comfy.pushLog('sys', tr('m.dl.logDone', { path: t.dest }))
-            emitNow()
-            // 完成态保留 3 秒供用户看到后自动清除行
-            setTimeout(() => {
-              const cur = states.get(t.dest)
-              if (cur && cur.task.status === 'completed') {
-                states.delete(t.dest)
-                emitNow()
-              }
-            }, 3000)
-          } catch (e) {
-            reject(e)
-          }
-        })
+        st.halt !== 'none' ? resolve() : finalizeSingle(t, tmp, file)
       })
       res.on('aborted', () => {
         if (st.halt !== 'none') resolve()
       })
     })
-    st.req = req
+    st.reqs.push(req)
     req.on('error', (e) => {
       if (st.halt !== 'none') return resolve()
       reject(e)
     })
   })
+}
+
+/** 单连接下载完成：临时文件正式落地并广播（保留 3 秒供查看后自动清除） */
+function finalizeSingle(t: DownloadTask, tmp: string, file: fs.WriteStream): void {
+  file.close(() => {
+    try {
+      fs.rmSync(t.dest, { force: true })
+      fs.renameSync(tmp, t.dest)
+      t.status = 'completed'
+      if (!t.total) t.total = t.received
+      t.speed = 0
+      comfy.pushLog('sys', tr('m.dl.logDone', { path: t.dest }))
+      emitNow()
+      setTimeout(() => {
+        const cur = states.get(t.dest)
+        if (cur && cur.task.status === 'completed') {
+          states.delete(t.dest)
+          emitNow()
+        }
+      }, 3000)
+    } catch (e) {
+      /* rename 失败不阻断任务列表 */
+    }
+  })
+}
+
+/** HEAD 探针：获取文件大小并确认服务器是否支持 Range（不支持则回退单连接） */
+function probeSource(url: string, st?: TaskState): Promise<{ total: number; range: boolean }> {
+  return new Promise(resolve => {
+    const lib = url.startsWith('http://') ? http : https
+    const req = lib.request(url, { method: 'HEAD', headers: { 'user-agent': 'comfyui-desk' } }, res => {
+      res.resume()
+      res.on('error', () => resolve({ total: 0, range: false }))
+      const range = /bytes/i.test(String(res.headers['accept-ranges'] || ''))
+      const len = Number(res.headers['content-length'] || 0)
+      resolve({ total: len > 0 ? len : 0, range })
+    })
+    if (st) st.reqs.push(req)
+    req.on('error', () => resolve({ total: 0, range: false }))
+    req.end()
+  })
+}
+
+function persistSegMeta(st: TaskState): void {
+  try {
+    fs.writeFileSync(st.partsFile!, JSON.stringify({ total: st.task.total, parts: st.parts!.map(p => ({ from: p.from, to: p.to })) }), 'utf-8')
+  } catch { /* 元数据落盘失败不影响下载 */ }
+}
+
+/** 按文件大小划分等分区间，并回填本次已存在的部分文件大小（局部续传） */
+function buildSegments(st: TaskState, total: number): void {
+  const count = Math.max(1, Math.min(SEG_COUNT, total <= 0 ? 1 : SEG_COUNT))
+  const base = Math.floor(total / count)
+  st.task.total = total
+  st.parts = []
+  st.partRecv = []
+  for (let i = 0; i < count; i++) {
+    const from = i * base
+    st.parts.push({ from, to: i === count - 1 ? total : from + base, path: `${st.task.dest}.seg${i}` })
+    const f = `${st.task.dest}.seg${i}`
+    try { st.partRecv.push(fs.existsSync(f) ? fs.statSync(f).size : 0) } catch { st.partRecv.push(0) }
+  }
+  st.partsFile = st.task.dest + '.segmeta.json'
+  persistSegMeta(st)
+}
+
+/** 分段并行下载主流程：各段并发拉取 → 全部就绪后合并 */
+async function runSegmented(st: TaskState): Promise<void> {
+  st.lastBytes = st.task.received
+  st.lastBytesAt = Date.now()
+  emitNow()
+  await Promise.all((st.parts ?? []).map((p, i) => downloadPart(st, p, i)))
+  if (st.halt !== 'none') return
+  await concatParts(st)
+}
+
+/** 下载单个分段（按 Range 续写该段独立临时文件），完成后统一合并 */
+function downloadPart(st: TaskState, part: Segment, i: number): Promise<void> {
+  const from = part.from + st.partRecv![i]
+  if (from >= part.to) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const lib = st.task.url.startsWith('http://') ? http : https
+    // 上界取 [to-1] 表示左右都闭区间，精确拉到该分段结尾
+    const req = lib.get(st.task.url, { headers: { 'user-agent': 'comfyui-desk', range: `bytes=${from}-${part.to - 1}` } }, res => {
+      if (res.statusCode !== 200 && res.statusCode !== 206) {
+        res.resume()
+        return reject(new Error(`HTTP ${res.statusCode}`))
+      }
+      // 服务器无视 Range 返回 200（整文件），分段失效
+      if (res.statusCode === 200 && from > 0) {
+        res.resume()
+        return reject(new Error(tr('m.dl.errSeqNoRange')))
+      }
+      const file = fs.createWriteStream(part.path, { flags: 'a' })
+      st.files.push(file)
+      res.on('data', (d: Buffer) => {
+        file.write(d)
+        st.partRecv![i] += d.length
+        st.task.received = (st.partRecv || []).reduce((a, b) => a + b, 0)
+        const now = Date.now()
+        if (now - st.lastBytesAt >= 500) {
+          st.task.speed = Math.round(((st.task.received - st.lastBytes) * 1000) / (now - st.lastBytesAt))
+          st.lastBytes = st.task.received
+          st.lastBytesAt = now
+        }
+        emitSoon()
+      })
+      // 服务端提前断开/字节不足：该分段未写满，视为失败
+      const segLen = part.to - part.from
+      const incomplete = () => {
+        if (st.halt !== 'none') return resolve()
+        if ((st.partRecv || [])[i] < segLen) return reject(new Error(tr('m.dl.errSeqEof')))
+      }
+      res.on('end', () => {
+        incomplete()
+        file.end()
+      })
+      res.on('error', incomplete)
+      file.on('error', incomplete)
+      file.on('finish', () => resolve())
+    })
+    st.reqs.push(req)
+    req.on('error', e => (st.halt !== 'none' ? resolve() : reject(e)))
+  })
+}
+
+/** 将各分段按顺序拼成最终文件并清理分段产物 */
+async function concatParts(st: TaskState): Promise<void> {
+  const tmp = st.task.dest + '.downloading'
+  const out = fs.createWriteStream(tmp)
+  // 顺序写入：每段作为可读流灌入 `out`（自带背压），`end` 即表示该段字节已全部排队写入
+  for (const p of st.parts!) {
+    await new Promise<void>((res, rej) => {
+      const rs = fs.createReadStream(p.path)
+      rs.on('error', rej)
+      rs.on('data', d => { if (!out.write(d)) rs.pause() })
+      rs.on('end', () => res())
+      out.on('drain', () => rs.resume())
+    })
+  }
+  await new Promise<void>(res => out.end(() => res()))
+  if (st.halt !== 'none') return
+  for (const p of st.parts!) { try { fs.rmSync(p.path, { force: true }) } catch { /* noop */ } }
+  try { fs.rmSync(st.partsFile!, { force: true }) } catch { /* noop */ }
+  fs.rmSync(st.task.dest, { force: true })
+  fs.renameSync(tmp, st.task.dest)
+  st.task.status = 'completed'
+  st.task.speed = 0
+  comfy.pushLog('sys', tr('m.dl.logDone', { path: st.task.dest }))
+  emitNow()
+  setTimeout(() => {
+    const cur = states.get(st.task.dest)
+    if (cur && cur.task.status === 'completed') {
+      states.delete(st.task.dest)
+      emitNow()
+    }
+  }, 3000)
 }
 
 async function runTask(st: TaskState): Promise<void> {
@@ -254,7 +428,20 @@ async function runTask(st: TaskState): Promise<void> {
   st.lastBytesAt = Date.now()
   emitNow()
   try {
-    await requestOnce(st, 5)
+    if (!st.parts) {
+      const probe = await probeSource(st.task.url, st)
+      if (st.halt !== 'none') return
+      if (probe.range && probe.total >= PARALLEL_MIN) {
+        buildSegments(st, probe.total)
+        st.task.received = (st.partRecv || []).reduce((a, b) => a + b, 0)
+        await runSegmented(st)
+      } else {
+        // 单连接：不预填 total，以 GET 响应 content-length 为准（HEAD 可能不准）
+        await requestOnce(st, 5)
+      }
+    } else {
+      await runSegmented(st)
+    }
   } catch (e) {
     if (st.halt !== 'none') return
     st.task.status = 'error'
@@ -296,7 +483,9 @@ export async function startDownload(opts: {
     },
     lastBytes: 0,
     lastBytesAt: Date.now(),
-    halt: 'none'
+    halt: 'none',
+    reqs: [],
+    files: []
   }
   if (states.has(dest)) return { ...states.get(dest)!.task } // 同目标已在下载中：直接返回
   states.set(dest, st)
@@ -316,8 +505,7 @@ export function pauseDownload(id: string): void {
   st.halt = 'pause'
   st.task.status = 'paused'
   st.task.speed = 0
-  st.req?.destroy()
-  st.file?.destroy()
+  haltAll(st)
   comfy.pushLog('sys', tr('m.dl.logPaused', { filename: st.task.filename }))
   emitNow()
 }
@@ -333,9 +521,10 @@ export function cancelDownload(id: string): void {
   const st = find(id)
   if (!st) return
   st.halt = 'cancel'
-  st.req?.destroy()
-  st.file?.destroy()
-  fs.rmSync(st.task.dest + '.downloading', { force: true })
+  haltAll(st)
+  for (const p of st.parts ?? []) { try { fs.rmSync(p.path, { force: true }) } catch { /* noop */ } }
+  try { fs.rmSync(st.partsFile!, { force: true }) } catch { /* noop */ }
+  try { fs.rmSync(st.task.dest + '.downloading', { force: true }) } catch { /* noop */ }
   states.delete(st.task.dest)
   comfy.pushLog(
     'sys',
@@ -347,6 +536,12 @@ export function cancelDownload(id: string): void {
 function find(id: string): TaskState | undefined {
   for (const st of states.values()) if (st.task.id === id) return st
   return undefined
+}
+
+/** 终止当前任务所有活跃请求与写入流（保留分段/临时文件，供暂停续传） */
+function haltAll(st: TaskState): void {
+  for (const r of st.reqs.splice(0)) r.destroy()
+  for (const f of st.files.splice(0)) f.destroy()
 }
 
 /** 全部暂停：暂停所有正在下载的任务 */

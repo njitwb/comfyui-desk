@@ -12,6 +12,30 @@ function nodesRoot(): string {
   return paths().customNodes
 }
 
+/** 取消令牌：各子进程启动时注册终止句柄；cancel 后逐个终止并置标记 */
+export interface CancelToken {
+  cancelled: boolean
+  kills: (() => void)[]
+}
+
+export function createToken(): CancelToken {
+  return { cancelled: false, kills: [] }
+}
+
+export function cancelToken(t: CancelToken): void {
+  t.cancelled = true
+  for (const k of t.kills.splice(0)) k()
+}
+
+/** 收集 run/pip 的终止句柄；已取消的安装不再发起新命令 */
+function linkKill(t: CancelToken, kill: () => void): void {
+  if (t.cancelled) {
+    kill()
+    return
+  }
+  t.kills.push(kill)
+}
+
 export async function listNodes(): Promise<NodeItem[]> {
   const root = nodesRoot()
   if (!fs.existsSync(root)) return []
@@ -35,42 +59,93 @@ export async function listNodes(): Promise<NodeItem[]> {
 }
 
 /** 安装节点依赖：requirements.txt → install.py */
-async function installDeps(dir: string, on: NodeEventFn): Promise<void> {
+async function installDeps(dir: string, on: NodeEventFn, token?: CancelToken): Promise<void> {
   const mirror = PIP_MIRRORS[loadSettings().pipMirror]
   const req = path.join(dir, 'requirements.txt')
   if (fs.existsSync(req)) {
     on(t('m.nodes.installDepsStart'))
     const r = await pip(['install', '-r', req, ...(mirror ? ['-i', mirror] : [])], {
       onData: on,
-      timeoutMs: 30 * 60 * 1000
+      timeoutMs: 30 * 60 * 1000,
+      onSpawn: k => token && linkKill(token, k)
     })
     if (r.code !== 0) on(t('m.nodes.depsWarn'))
   }
   const installer = path.join(dir, 'install.py')
   if (fs.existsSync(installer)) {
     on(t('m.nodes.runInstallPy'))
-    await run(paths().venvPython, ['install.py'], { cwd: dir, onData: on, timeoutMs: 10 * 60 * 1000 })
+    await run(paths().venvPython, ['install.py'], {
+      cwd: dir,
+      onData: on,
+      timeoutMs: 10 * 60 * 1000,
+      onSpawn: k => token && linkKill(token, k)
+    })
   }
 }
 
 /** git clone 安装自定义节点（自动套用代理前缀） */
-export async function installNode(url: string, on: NodeEventFn): Promise<string> {
+export async function installNode(url: string, on: NodeEventFn, token?: CancelToken): Promise<string> {
   if (!/^https?:\/\//.test(url) && !/^git@/.test(url)) throw new Error(t('m.nodes.invalidUrl'))
   const root = nodesRoot()
   fs.mkdirSync(root, { recursive: true })
   const name = path.basename(url.replace(/\/+$/, '')).replace(/\.git$/i, '')
   const dest = path.join(root, name)
   if (fs.existsSync(dest)) throw new Error(t('m.nodes.exists', { name }))
+  if (token?.cancelled) throw new Error(t('m.nodes.cancelled'))
   const finalUrl = transformGitUrl(url)
   on(t('m.nodes.cloning', { url: finalUrl }))
-  const r = await run(gitExe(), ['clone', '--depth', '1', finalUrl, dest], { onData: on, timeoutMs: 30 * 60 * 1000 })
+  const r = await run(gitExe(), ['clone', '--depth', '1', finalUrl, dest], {
+    onData: on,
+    timeoutMs: 30 * 60 * 1000,
+    onSpawn: k => token && linkKill(token, k)
+  })
   if (r.code !== 0) {
     fs.rmSync(dest, { recursive: true, force: true })
-    throw new Error(t('m.nodes.cloneFailed', { msg: (r.err || r.out).slice(-300) }))
+    throw new Error(r.aborted ? t('m.nodes.cancelled') : t('m.nodes.cloneFailed', { msg: (r.err || r.out).slice(-300) }))
   }
-  await installDeps(dest, on)
+  if (token?.cancelled) {
+    fs.rmSync(dest, { recursive: true, force: true })
+    throw new Error(t('m.nodes.cancelled'))
+  }
+  await installDeps(dest, on, token)
+  if (token?.cancelled) {
+    fs.rmSync(dest, { recursive: true, force: true })
+    throw new Error(t('m.nodes.cancelled'))
+  }
   on(t('m.nodes.installDone', { name }))
   return name
+}
+
+/** 批量安装：按顺序逐个安装；取消后中止剩余，返回已完成与失败列表 */
+export async function installMany(
+  urls: string[],
+  on: NodeEventFn,
+  token: CancelToken,
+  onItem?: (name: string, status: string, error?: string) => void
+): Promise<{ ok: string[]; failed: string[] }> {
+  const ok: string[] = []
+  const failed: string[] = []
+  const nameOf = (url: string): string => path.basename(url.replace(/\/+$/, '')).replace(/\.git$/i, '')
+  for (const rawUrl of urls) {
+    if (token.cancelled) break
+    const url = rawUrl.trim()
+    if (!url) continue
+    const name = nameOf(url)
+    if (fs.existsSync(path.join(nodesRoot(), name))) {
+      onItem?.(name, 'skipped')
+      continue
+    }
+    onItem?.(name, 'installing')
+    try {
+      ok.push(await installNode(url, on, token))
+      onItem?.(name, 'done')
+    } catch (e) {
+      onItem?.(name, token.cancelled ? 'cancelled' : 'failed', String((e as Error).message || e))
+      failed.push(String((e as Error).message || e))
+      if (token.cancelled) break
+    }
+  }
+  return { ok, failed }
 }
 
 export async function updateNode(name: string, on: NodeEventFn): Promise<void> {

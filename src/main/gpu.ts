@@ -1,6 +1,7 @@
 import { run } from './util'
 import type { GpuInfo } from '../shared/api'
 import { t } from './i18n'
+import { isWin } from './platform'
 
 function vendorOf(name: string): GpuInfo['vendor'] {
   const n = name.toLowerCase()
@@ -10,7 +11,7 @@ function vendorOf(name: string): GpuInfo['vendor'] {
   return 'unknown'
 }
 
-/** nvidia-smi 读显存（MB）：WMI 的 AdapterRAM 上限 4GB，不可靠 */
+/** nvidia-smi 读显存（MB）：WMI/Windows 的 AdapterRAM 上限 4GB，不可靠 */
 async function nvidiaVram(): Promise<number[]> {
   try {
     const r = await run('nvidia-smi', ['--query-gpu=memory.total', '--format=csv,noheader,nounits'], { timeoutMs: 8000 })
@@ -21,8 +22,8 @@ async function nvidiaVram(): Promise<number[]> {
   return []
 }
 
-/** WMI 检测显卡型号与驱动版本，NVIDIA 卡附带显存 */
-export async function detectGpu(): Promise<GpuInfo[]> {
+/** Windows：WMI 检测显卡型号与驱动版本，NVIDIA 卡附带显存 */
+async function detectWindows(): Promise<GpuInfo[]> {
   const ps = 'Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion | ConvertTo-Json -Compress'
   try {
     const r = await run('powershell', ['-NoProfile', '-Command', ps], { timeoutMs: 15000 })
@@ -49,4 +50,39 @@ export async function detectGpu(): Promise<GpuInfo[]> {
     /* ignore */
   }
   return []
+}
+
+/** POSIX：nvidia-smi（CSV：name,driver,memory）检测 NVIDIA；无 NVIDIA 时用 lspci 识别 AMD/Intel */
+async function detectPosix(): Promise<GpuInfo[]> {
+  const gpus: GpuInfo[] = []
+  try {
+    const r = await run('nvidia-smi', ['--query-gpu=name,driver_version,memory.total', '--format=csv,noheader,nounits'], { timeoutMs: 8000 })
+    for (const line of r.out.split(/\r?\n/)) {
+      const [name, driver, vram] = line.split(',').map(s => s.trim())
+      if (!name) continue
+      gpus.push({ name, driver: driver || '', vendor: vendorOf(name), vram: parseInt(vram, 10) || 0 })
+    }
+  } catch {
+    /* nvidia-smi 不存在或不可用 */
+  }
+  // 无 NVIDIA 卡时才用 lspci 补充 AMD / Intel 集成卡
+  if (!gpus.some(g => g.vendor === 'nvidia')) {
+    try {
+      const r = await run('lspci', ['-nn'], { timeoutMs: 8000 })
+      for (const line of r.out.split(/\r?\n/)) {
+        const m = line.match(/VGA compatible controller: (.+)/)
+        if (!m) continue
+        const name = m[1].replace(/\[[0-9a-f]{4}:[0-9a-f]{4}\]/g, '').trim()
+        if (!name) continue
+        gpus.push({ name, driver: '', vendor: vendorOf(name), vram: 0 })
+      }
+    } catch {
+      /* lspci 不可用 */
+    }
+  }
+  return gpus
+}
+
+export async function detectGpu(): Promise<GpuInfo[]> {
+  return isWin ? detectWindows() : detectPosix()
 }

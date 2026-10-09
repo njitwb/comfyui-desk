@@ -8,6 +8,7 @@ import { detectGpu } from './gpu'
 import { killTree, splitArgs } from './util'
 import { appendLog } from './logger'
 import { t } from './i18n'
+import { isWin } from './platform'
 import type { ComfyStatus, LogLine } from '../shared/api'
 
 const MAX_LOG = 5000
@@ -77,7 +78,8 @@ class ComfyProcess extends EventEmitter {
     if (!isInstalled()) throw new Error(t('m.proc.notInstalled'))
     const p = paths()
     if (!fs.existsSync(p.venvPython)) throw new Error(t('m.proc.venvMissing'))
-    const args = ['-s', 'main.py', '--port', String(loadSettings().port), '--windows-standalone-build']
+    const args = ['-s', 'main.py', '--port', String(loadSettings().port)]
+    if (isWin) args.push('--windows-standalone-build')
     await this.applyAutoVramOnce()
     const s = loadSettings()
     if (s.modelPath) args.push('--extra-model-paths-config', 'extra_model_paths.yaml')

@@ -4,6 +4,7 @@ import { run, gitDir } from './util'
 import type { PythonInfo } from '../shared/api'
 import { paths } from './settings'
 import { t } from './i18n'
+import { isWin, isExecutable } from './platform'
 
 let pyTagCache: string | null = null
 
@@ -17,8 +18,9 @@ export async function getPyTag(): Promise<string> {
   return (pyTagCache = tag)
 }
 
-/** 打包进 resources 的便携 Python（实现零外部依赖） */
+/** 打包进 resources 的便携 Python（实现零外部依赖；仅 Windows 随包分发，POSIX 用系统 Python） */
 export function bundledPython(): PythonInfo | null {
+  if (!isWin) return null
   const candidates = [
     path.join(process.resourcesPath || '', 'python', 'python.exe'),
     path.join(process.cwd(), 'resources', 'python', 'python.exe')
@@ -29,7 +31,7 @@ export function bundledPython(): PythonInfo | null {
   return null
 }
 
-/** 枚举可用 Python：便携版 → 已有 venv → py 启动器 → PATH */
+/** 枚举可用 Python：便携版 → 已有 venv → POSIX PATH / Windows py 启动器 → PATH */
 export async function listPythons(): Promise<PythonInfo[]> {
   const out: PythonInfo[] = []
   const seen = new Set<string>()
@@ -49,22 +51,37 @@ export async function listPythons(): Promise<PythonInfo[]> {
   if (b) out.push(b)
   const p = paths()
   if (fs.existsSync(p.venvPython)) await push(p.venvPython)
-  try {
-    const r = await run('py', ['-0p'], { timeoutMs: 8000 })
-    for (const line of r.out.split(/\r?\n/)) {
-      const m = line.match(/-\S+\s+\*?\s*(\S+python\.exe)/i)
-      if (m) await push(m[1])
+  if (isWin) {
+    try {
+      const r = await run('py', ['-0p'], { timeoutMs: 8000 })
+      for (const line of r.out.split(/\r?\n/)) {
+        const m = line.match(/-\S+\s+\*?\s*(\S+python\.exe)/i)
+        if (m) await push(m[1])
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
-  }
-  try {
-    const r = await run('where', ['python'], { timeoutMs: 8000 })
-    for (const line of r.out.split(/\r?\n/)) {
-      if (/python\.exe$/i.test(line.trim()) && !/WindowsApps/i.test(line)) await push(line)
+    try {
+      const r = await run('where', ['python'], { timeoutMs: 8000 })
+      for (const line of r.out.split(/\r?\n/)) {
+        if (/python\.exe$/i.test(line.trim()) && !/WindowsApps/i.test(line)) await push(line)
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
+  } else {
+    // POSIX：扫描 PATH 中的 python3 / python（跳过指向自身的 venv 软链，避免重复）
+    try {
+      for (const d of (process.env.PATH || '').split(path.delimiter)) {
+        if (!d) continue
+        for (const name of ['python3', 'python']) {
+          const exe = path.join(d, name)
+          if (isExecutable(exe) && !path.dirname(exe).startsWith(p.venv)) await push(exe)
+        }
+      }
+    } catch {
+      /* ignore */
+    }
   }
   return out
 }
@@ -89,6 +106,8 @@ export async function pip(
     findLinks?: string
     onData?: (s: string) => void
     timeoutMs?: number
+    /** 进程启动后暴露终止句柄，供外部（如取消安装）中止当前命令 */
+    onSpawn?: (kill: () => void) => void
   } = {}
 ): Promise<{ code: number; out: string }> {
   const p = paths()
@@ -100,6 +119,7 @@ export async function pip(
   const r = await run(p.venvPython, final, {
     onData: opts.onData,
     timeoutMs: opts.timeoutMs ?? 20 * 60 * 1000,
+    onSpawn: opts.onSpawn,
     // 强制 UTF-8，避免 Windows GBK 下报错信息乱码
     env: { PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
   })
@@ -107,10 +127,10 @@ export async function pip(
   return { code: r.code, out: r.out + r.err }
 }
 
-/** 终端 / 子进程环境：venv Scripts 与便携 git 置于 PATH 前部 */
+/** 终端 / 子进程环境：venv bin/Scripts 与便携 git 置于 PATH 前部（POSIX 无便携 git，仅追加 venv） */
 export function venvEnv(): NodeJS.ProcessEnv {
   const p = paths()
-  const gitCmd = gitDir() ? path.join(gitDir()!, 'cmd') : path.join(p.root, 'git', 'cmd')
+  const gitCmd = isWin ? (gitDir() ? path.join(gitDir()!, 'cmd') : path.join(p.root, 'git', 'cmd')) : ''
   const extra = [p.venvScripts, gitCmd].filter(fs.existsSync)
   return { PATH: [...extra, process.env.PATH].join(path.delimiter), VIRTUAL_ENV: p.venv }
 }

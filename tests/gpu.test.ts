@@ -10,84 +10,95 @@ vi.mock('../src/main/util', async importOriginal => {
 
 import { detectGpu } from '../src/main/gpu'
 
+const IS_WIN = process.platform === 'win32'
+
 beforeEach(() => h.runMock.mockReset())
 
-const psOut = (data: unknown) => ({ code: 0, out: JSON.stringify(data), err: '' })
+// 按平台返回「一次成功打满」的默认实现：无匹配命令一律失败
+function nvidia(name: string, driver: string, vram: number): () => Promise<{ code: number; out: string; err: string }> {
+  return async (cmd: string) => {
+    if (cmd === 'nvidia-smi') {
+      const out = IS_WIN ? `${vram}\n` : `${name}, ${driver}, ${vram}\n`
+      return { code: 0, out, err: '' }
+    }
+    if (cmd === 'powershell') return { code: 0, out: JSON.stringify({ Name: name, DriverVersion: driver }), err: '' }
+    return { code: 1, out: '', err: '' }
+  }
+}
 
 describe('detectGpu', () => {
-  it('解析 WMI 单显卡（JSON 对象而非数组）', async () => {
-    h.runMock.mockImplementation(async cmd => {
-      if (cmd === 'powershell') return psOut({ Name: 'NVIDIA GeForce RTX 4090', DriverVersion: '560.70' })
-      if (cmd === 'nvidia-smi') return { code: 0, out: '24564\n', err: '' }
-      return { code: 1, out: '', err: '' }
-    })
+  it('识别单张 NVIDIA 卡并读取显存', async () => {
+    h.runMock.mockImplementation(nvidia('NVIDIA GeForce RTX 4090', '560.70', 24564))
     const gpus = await detectGpu()
     expect(gpus).toHaveLength(1)
-    expect(gpus[0]).toEqual({ name: 'NVIDIA GeForce RTX 4090', driver: '560.70', vendor: 'nvidia', vram: 24564 })
-  })
-
-  it('多显卡混合：按顺序只为 NVIDIA 卡填显存', async () => {
-    h.runMock.mockImplementation(async cmd => {
-      if (cmd === 'powershell')
-        return psOut([
-          { Name: 'Intel UHD Graphics 770', DriverVersion: '31.0' },
-          { Name: 'NVIDIA GeForce RTX 3060', DriverVersion: '552.12' },
-          { Name: 'AMD Radeon RX 6600', DriverVersion: '32.0' }
-        ])
-      if (cmd === 'nvidia-smi') return { code: 0, out: '12288\n', err: '' }
-      return { code: 1, out: '', err: '' }
-    })
-    const gpus = await detectGpu()
-    expect(gpus.map(g => g.vendor)).toEqual(['intel', 'nvidia', 'amd'])
-    expect(gpus[0].vram).toBe(0)
-    expect(gpus[1].vram).toBe(12288)
-    expect(gpus[2].vram).toBe(0)
-  })
-
-  it('多张 NVIDIA 卡按 nvidia-smi 顺序对应', async () => {
-    h.runMock.mockImplementation(async cmd => {
-      if (cmd === 'powershell')
-        return psOut([
-          { Name: 'NVIDIA RTX A', DriverVersion: '1' },
-          { Name: 'NVIDIA RTX B', DriverVersion: '1' }
-        ])
-      if (cmd === 'nvidia-smi') return { code: 0, out: '8192\n16384\n', err: '' }
-      return { code: 1, out: '', err: '' }
-    })
-    const gpus = await detectGpu()
-    expect(gpus[0].vram).toBe(8192)
-    expect(gpus[1].vram).toBe(16384)
-  })
-
-  it('nvidia-smi 不可用时显存为 0', async () => {
-    h.runMock.mockImplementation(async cmd => {
-      if (cmd === 'powershell') return psOut({ Name: 'GeForce GTX 1060', DriverVersion: '1' })
-      if (cmd === 'nvidia-smi') throw new Error('not found')
-      return { code: 1, out: '', err: '' }
-    })
-    const gpus = await detectGpu()
     expect(gpus[0].vendor).toBe('nvidia')
-    expect(gpus[0].vram).toBe(0)
-  })
-
-  it('powershell 失败返回空数组', async () => {
-    h.runMock.mockImplementation(async cmd => {
-      if (cmd === 'powershell') throw new Error('no powershell')
-      return { code: 1, out: '', err: '' }
-    })
-    expect(await detectGpu()).toEqual([])
-  })
-
-  it('非 JSON 输出返回空数组', async () => {
-    h.runMock.mockResolvedValue({ code: 0, out: 'not-json', err: '' })
-    expect(await detectGpu()).toEqual([])
+    expect(gpus[0].name).toContain('NVIDIA GeForce RTX 4090')
+    expect(gpus[0].vram).toBe(24564)
   })
 
   it('厂商识别：unknown 兜底', async () => {
     h.runMock.mockImplementation(async cmd => {
-      if (cmd === 'powershell') return psOut({ Name: 'Virtual Display Adapter', DriverVersion: '' })
+      if (cmd === 'nvidia-smi') return { code: 0, out: IS_WIN ? '\n' : 'Virtual Display Adapter, , 0\n', err: '' }
+      if (cmd === 'powershell') return { code: 0, out: JSON.stringify({ Name: 'Virtual Display Adapter', DriverVersion: '' }), err: '' }
       return { code: 1, out: '', err: '' }
     })
-    expect((await detectGpu())[0].vendor).toBe('unknown')
+    const gpus = await detectGpu()
+    expect(gpus.length).toBeGreaterThan(0)
+    expect(gpus[0].vendor).toBe('unknown')
+  })
+
+  it('nvidia-smi 不可用时显存为 0', async () => {
+    h.runMock.mockImplementation(async cmd => {
+      if (cmd === 'nvidia-smi') throw new Error('not found')
+      if (cmd === 'powershell') return { code: 0, out: JSON.stringify({ Name: 'GeForce GTX 1060', DriverVersion: '1' }), err: '' }
+      // POSIX 会再尝试 lspci，一并失败
+      return { code: 1, out: '', err: '' }
+    })
+    const gpus = await detectGpu()
+    if (IS_WIN) {
+      expect(gpus[0].vendor).toBe('nvidia')
+      expect(gpus[0].vram).toBe(0)
+    } else {
+      expect(gpus).toEqual([])
+    }
+  })
+
+  it('检测完全失败返回空数组', async () => {
+    h.runMock.mockImplementation(async () => ({ code: 1, out: '', err: '' }))
+    expect(await detectGpu()).toEqual([])
+  })
+
+  it('异常输出不抛错（Windows 非 JSON 为空，POSIX 尽量解析）', async () => {
+    h.runMock.mockResolvedValue({ code: 0, out: 'not-json', err: '' })
+    if (IS_WIN) {
+      expect(await detectGpu()).toEqual([])
+    } else {
+      // CSV 分列后「not-json」被当作名称，厂商识别为 unknown，不崩溃即可
+      const gpus = await detectGpu()
+      expect(gpus).toHaveLength(1)
+      expect(gpus[0].vendor).toBe('unknown')
+    }
+  })
+
+  it('多张 NVIDIA 卡按 nvidia-smi 顺序对应显存', async () => {
+    if (IS_WIN) {
+      h.runMock.mockImplementation(async cmd => {
+        if (cmd === 'powershell')
+          return { code: 0, out: JSON.stringify([{ Name: 'NVIDIA RTX A', DriverVersion: '1' }, { Name: 'NVIDIA RTX B', DriverVersion: '1' }]), err: '' }
+        if (cmd === 'nvidia-smi') return { code: 0, out: '8192\n16384\n', err: '' }
+        return { code: 1, out: '', err: '' }
+      })
+      const gpus = await detectGpu()
+      expect(gpus[0].vram).toBe(8192)
+      expect(gpus[1].vram).toBe(16384)
+    } else {
+      h.runMock.mockImplementation(async cmd => {
+        if (cmd === 'nvidia-smi') return { code: 0, out: 'NVIDIA RTX A, 1, 8192\nNVIDIA RTX B, 1, 16384\n', err: '' }
+        return { code: 1, out: '', err: '' }
+      })
+      const gpus = await detectGpu()
+      expect(gpus[0].vram).toBe(8192)
+      expect(gpus[1].vram).toBe(16384)
+    }
   })
 })

@@ -302,7 +302,9 @@ export interface LauncherApi {
   logInfo(msg: string): Promise<void>
   // nodes
   listNodes(): Promise<NodeItem[]>
-  installNode(url: string): Promise<string>
+  installNodes(urls: string[], batchId: number): Promise<{ ok: string[]; failed: string[]; cancelled: boolean }>
+  cancelNodeInstall(batchId: number): Promise<void>
+  onNodeItem(cb: (e: { batchId: number; name: string; status: string; error?: string }) => void): () => void
   updateNode(name: string): Promise<void>
   updateAllNodes(): Promise<{ ok: string[]; failed: string[] }>
   removeNode(name: string): Promise<void>
@@ -310,7 +312,7 @@ export interface LauncherApi {
   // workflows
   scanWorkflows(): Promise<WorkflowItem[]>
   workflowDir(): Promise<string>
-  importWorkflow(): Promise<WorkflowItem | null>
+  importWorkflow(): Promise<WorkflowItem[]>
   queueWorkflow(path: string): Promise<{ promptId: string; number: number }>
   deleteWorkflow(path: string): Promise<void>
   // terminal（交互式 PTY 会话；shell 自动选择 Git Bash / PowerShell）
@@ -383,6 +385,8 @@ export const IPC = {
   // nodes
   nodesList: 'nodes:list',
   nodesInstall: 'nodes:install',
+  nodesCancel: 'nodes:cancel',
+  nodesItem: 'ev:nodesItem',
   nodesUpdate: 'nodes:update',
   nodesUpdateAll: 'nodes:updateAll',
   nodesRemove: 'nodes:remove',

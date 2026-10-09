@@ -28,5 +28,13 @@ export default {
   'm.dl.errNotModelFile': [
     '服务器返回网页而非模型文件（可能是页面链接或需登录才可下载）',
     'The server returned a web page instead of a model file (the link may be a page link or require sign-in to download)'
+  ],
+  'm.dl.errSeqNoRange': [
+    '服务器不支持分段下载，已改为单连接重试',
+    'Server does not support segmented download; falling back to a single connection'
+  ],
+  'm.dl.errSeqEof': [
+    '分段下载被服务器提前断开',
+    'A segment was interrupted by the server'
   ]
 } as const satisfies MessageTable
