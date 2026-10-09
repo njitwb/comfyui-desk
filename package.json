@@ -1,6 +1,6 @@
 {
   "name": "comfyui-desk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "ComfyUI 一站式桌面管家",
   "main": "dist/main/index.js",
