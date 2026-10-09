@@ -7,6 +7,9 @@ directories:
 
 files:
   - dist/**
+  - canvas/web/dist/**
+  # 内嵌画布 webview 的预加载桥（app.getAppPath() 下按 file:// 加载）
+  - resources/canvas-preload.cjs
 
 # 便携 Python / git 仅随 Windows 包分发（路径与 bundledPython()/gitDir() 探测一致）；
 # POSIX 平台（Linux/macOS）使用系统 Python 与 git，随包不内置

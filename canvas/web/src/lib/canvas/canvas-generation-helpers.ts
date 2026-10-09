@@ -1,0 +1,339 @@
+import { defaultConfig, findWorkflow, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
+import i18n from "@/i18n";
+import { imageToDataUrl, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { resolveMediaUrl } from "@/services/file-storage";
+import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
+import type { NodeGenerationContext as NodeGenerationInputContext, NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
+import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
+import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
+import type { ReferenceImage } from "@/types/image";
+import { nanoid } from "nanoid";
+import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasGenerationIntent, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
+
+export function imageExtension(dataUrl: string) {
+    return dataUrl.match(/^data:image[/]([^;]+)/)?.[1] || dataUrl.match(/image[/]([^;]+)/)?.[1] || "png";
+}
+
+export function audioExtension(mimeType?: string) {
+    if (mimeType?.includes("wav")) return "wav";
+    if (mimeType?.includes("opus")) return "opus";
+    if (mimeType?.includes("aac")) return "aac";
+    if (mimeType?.includes("flac")) return "flac";
+    if (mimeType?.includes("pcm")) return "pcm";
+    return "mp3";
+}
+
+export function generationReferenceUrls(context: { referenceImages: ReferenceImage[]; referenceVideos: Array<{ storageKey?: string; url?: string }>; referenceAudios?: Array<{ storageKey?: string; url?: string }> }) {
+    return [
+        ...context.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)),
+        ...context.referenceVideos.map((video) => video.storageKey || video.url).filter((url): url is string => Boolean(url)),
+        ...(context.referenceAudios || []).map((audio) => audio.storageKey || audio.url).filter((url): url is string => Boolean(url)),
+    ];
+}
+
+export async function restoreGenerationContext(metadata: CanvasNodeMetadata): Promise<NodeGenerationInputContext | null> {
+    if (metadata.effectivePrompt === undefined || !metadata.generationReferences) return null;
+    const imageSnapshots = metadata.generationReferences.filter((reference) => reference.kind === "image");
+    const videoSnapshots = metadata.generationReferences.filter((reference) => reference.kind === "video");
+    const audioSnapshots = metadata.generationReferences.filter((reference) => reference.kind === "audio");
+    const referenceImages = await Promise.all(
+        imageSnapshots.map(async (reference) => {
+            const dataUrl = await imageToDataUrl({ storageKey: reference.storageKey, url: reference.url });
+            if (!dataUrl) throw new Error(i18n.t("canvas.projectPage.referenceMissing"));
+            return { id: reference.nodeId, name: reference.nodeId + ".png", type: reference.mimeType || "image/png", dataUrl, storageKey: reference.storageKey, url: reference.url };
+        }),
+    );
+    const referenceVideos = await Promise.all(
+        videoSnapshots.map(async (reference) => {
+            const url = await resolveMediaUrl(reference.storageKey, reference.url || "");
+            if (!url) throw new Error(i18n.t("canvas.projectPage.referenceMissing"));
+            return { id: reference.nodeId, name: reference.nodeId + ".mp4", type: reference.mimeType || "video/mp4", url, storageKey: reference.storageKey };
+        }),
+    );
+    const referenceAudios = await Promise.all(
+        audioSnapshots.map(async (reference) => {
+            const url = await resolveMediaUrl(reference.storageKey, reference.url || "");
+            if (!url) throw new Error(i18n.t("canvas.projectPage.referenceMissing"));
+            return { id: reference.nodeId, name: reference.nodeId + ".mp3", type: reference.mimeType || "audio/mpeg", url, storageKey: reference.storageKey };
+        }),
+    );
+    return {
+        prompt: metadata.effectivePrompt,
+        generationReferences: metadata.generationReferences,
+        referenceImages,
+        referenceVideos,
+        referenceAudios,
+        textCount: metadata.generationReferences.filter((reference) => reference.kind === "text").length,
+        imageCount: referenceImages.length,
+        videoCount: referenceVideos.length,
+        audioCount: referenceAudios.length,
+    };
+}
+
+export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
+    if (metadata.generationType !== "edit") return [];
+    if (!metadata.references?.length) return null;
+    const references = await Promise.all(
+        metadata.references.map(async (url, index) => {
+            const dataUrl = url.startsWith("image:") ? await resolveImageUrl(url, "") : url;
+            return dataUrl ? { id: `${index}`, name: `reference-${index}.png`, type: "image/png", dataUrl, storageKey: url.startsWith("image:") ? url : undefined } : null;
+        }),
+    );
+    return references.every(Boolean) ? (references as ReferenceImage[]) : null;
+}
+
+export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
+    return Promise.all(
+        nodes.map(async (node) => {
+            const content = node.metadata?.content;
+            if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && node.metadata?.storageKey) return { ...node, metadata: { ...node.metadata, content: await resolveMediaUrl(node.metadata.storageKey, content) } };
+            if (node.type !== CanvasNodeType.Image || !content) return node;
+            const images = await Promise.all((node.metadata?.images || []).map(async (image) => (image.content ? { ...image, content: await resolveImageUrl(image.storageKey, image.content) } : image)));
+            if (node.metadata?.storageKey) return { ...node, metadata: { ...node.metadata, content: await resolveImageUrl(node.metadata.storageKey, content), images } };
+            if (!content.startsWith("data:image/")) return node;
+            return { ...node, metadata: { ...node.metadata, ...imageMetadata(await uploadImage(content)) } };
+        }),
+    );
+}
+
+export async function hydrateAssistantImages(sessions: CanvasAssistantSession[]) {
+    const hydrateItem = async <T extends { dataUrl?: string; storageKey?: string }>(item: T) => {
+        if (item.storageKey) return { ...item, dataUrl: await resolveImageUrl(item.storageKey, item.dataUrl) };
+        if (item.dataUrl?.startsWith("data:image/")) {
+            const image = await uploadImage(item.dataUrl);
+            return { ...item, dataUrl: image.url, storageKey: image.storageKey };
+        }
+        return item;
+    };
+    return Promise.all(
+        sessions.map(async (session) => ({
+            ...session,
+            messages: await Promise.all(
+                session.messages.map(async (message) => ({
+                    ...message,
+                    references: await Promise.all((message.references || []).map(hydrateItem)),
+                })),
+            ),
+        })),
+    );
+}
+
+export function getGenerationCount(count: string) {
+    return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(count)) || 1)));
+}
+
+export function getInputSummary(inputs: NodeGenerationInput[]) {
+    const resources = [...new Map(inputs.flatMap((input) => (input.type === "group" ? input.children : [input])).map((input) => [input.nodeId, input])).values()];
+    return {
+        textCount: resources.filter((input) => input.type === "text").length,
+        imageCount: resources.filter((input) => input.type === "image").length,
+        videoCount: resources.filter((input) => input.type === "video").length,
+        audioCount: resources.filter((input) => input.type === "audio").length,
+    };
+}
+
+export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefined, mode: CanvasNodeGenerationMode): AiConfig {
+    const model = resolveModelForCapability(config, node?.metadata?.model, mode);
+    const channelId = node?.metadata?.channelId || config.channelId;
+    const workflowId = node?.metadata?.workflowId || config.workflowId;
+    let videoMode = node?.metadata?.videoMode;
+    if (mode === "video" && workflowId) {
+        const wf = findWorkflow(config, channelId, workflowId);
+        if (wf?.category === "frameVideo") videoMode = "frame";
+        else if (wf?.category === "omniVideo" || wf?.category === "faceRefine") videoMode = "omni";
+    }
+    if (videoMode === "frame" && (workflowId ? findWorkflow(config, channelId, workflowId)?.category === "faceRefine" : false)) {
+        videoMode = "omni";
+    }
+    if (!videoMode) {
+        videoMode = config.videoMode || defaultConfig.videoMode || "omni";
+    }
+
+    return {
+        ...config,
+        channelId,
+        workflowId,
+        model,
+        videoModel: mode === "video" ? model : config.videoModel,
+        imageModel: mode === "image" ? model : config.imageModel,
+        textModel: mode === "text" ? model : config.textModel,
+        audioModel: mode === "audio" ? model : config.audioModel,
+        reasoningEffort: node?.metadata?.reasoningEffort || config.reasoningEffort || defaultConfig.reasoningEffort,
+        quality: node?.metadata?.quality || config.quality || defaultConfig.quality,
+        size: node?.metadata?.size || config.size || defaultConfig.size,
+        background: node?.metadata?.background ?? config.background ?? defaultConfig.background,
+        videoSeconds: (node?.metadata?.seconds === "6" ? undefined : node?.metadata?.seconds) || (config.videoSeconds === "6" ? "5" : config.videoSeconds) || defaultConfig.videoSeconds,
+        audioSeconds: node?.metadata?.seconds || config.audioSeconds || defaultConfig.audioSeconds || "60",
+        videoMode,
+        vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
+        videoGenerateAudio: node?.metadata?.generateAudio || config.videoGenerateAudio || defaultConfig.videoGenerateAudio,
+        videoWatermark: node?.metadata?.watermark || config.videoWatermark || defaultConfig.videoWatermark,
+        audioVoice: node?.metadata?.audioVoice || config.audioVoice || defaultConfig.audioVoice,
+        audioFormat: node?.metadata?.audioFormat || config.audioFormat || defaultConfig.audioFormat,
+        audioSpeed: node?.metadata?.audioSpeed || config.audioSpeed || defaultConfig.audioSpeed,
+        audioInstructions: node?.metadata?.audioInstructions || config.audioInstructions || defaultConfig.audioInstructions,
+        count: String(node?.metadata?.count || (mode === "image" ? config.canvasImageCount || config.count : config.count) || defaultConfig.count),
+    };
+}
+
+export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
+    return nodes.map((node) =>
+        node.metadata?.status === "loading"
+            ? {
+                  ...node,
+                  metadata: {
+                      ...node.metadata,
+                      status: "error" as const,
+                      errorDetails: i18n.t("canvas.generation.interrupted"),
+                      images: node.metadata.images?.map((image) => (image.status === "loading" ? { ...image, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : image)),
+                      texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : text)),
+                  },
+              }
+            : node,
+    );
+}
+
+export function isGenerationCanceled(error: unknown) {
+    return error instanceof Error && (error.message === i18n.t("common.requestCanceled") || error.name === "AbortError" || error.name === "ComfyuiAbortedError");
+}
+
+export function findRetrySourceNode(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const queue = connections.filter((connection) => connection.kind === "lineage" && connection.toNodeId === nodeId).map((connection) => connection.fromNodeId);
+    const visited = new Set<string>();
+    while (queue.length) {
+        const id = queue.shift()!;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const node = nodes.find((item) => item.id === id);
+        if (node?.type === CanvasNodeType.Config) return node;
+        connections.filter((connection) => connection.kind === "lineage" && connection.toNodeId === id).forEach((connection) => queue.push(connection.fromNodeId));
+    }
+    return null;
+}
+
+export function shouldMarkGenerationSourceStatus(sourceNode: CanvasNodeData | null | undefined): boolean {
+    if (!sourceNode) return true;
+    const hasSuccessContent =
+        sourceNode.type !== CanvasNodeType.Config &&
+        sourceNode.metadata?.status === "success" &&
+        !!sourceNode.metadata?.content;
+    return !hasSuccessContent;
+}
+
+export function sourceNodeReferenceImages(node: CanvasNodeData | null) {
+    if (!node || node.type !== CanvasNodeType.Image || !node.metadata?.content) return [];
+    return [
+        {
+            id: node.id,
+            name: `${node.title || node.id}.png`,
+            type: node.metadata.mimeType || "image/png",
+            dataUrl: node.metadata.content,
+            storageKey: node.metadata.storageKey,
+        },
+    ];
+}
+
+export function isAudioFile(file: File) {
+    return file.type.startsWith("audio/") || /\.(mp3|wav)$/i.test(file.name);
+}
+
+export function buildAngleLabel(params: CanvasImageAngleParams) {
+    const horizontal = params.horizontalAngle === 0 ? i18n.t("canvas.generation.front") : params.horizontalAngle > 0 ? i18n.t("canvas.generation.rotateRight", { angle: params.horizontalAngle }) : i18n.t("canvas.generation.rotateLeft", { angle: Math.abs(params.horizontalAngle) });
+    const pitch = params.pitchAngle === 0 ? i18n.t("canvas.generation.level") : params.pitchAngle > 0 ? i18n.t("canvas.generation.topDown", { angle: params.pitchAngle }) : i18n.t("canvas.generation.lowAngle", { angle: Math.abs(params.pitchAngle) });
+    return i18n.t("canvas.generation.angleLabel", { horizontal, pitch, distance: params.cameraDistance.toFixed(1), lens: i18n.t(params.wideAngle ? "canvas.editors.wide" : "canvas.editors.standard") });
+}
+
+export function buildAnglePrompt(params: CanvasImageAngleParams) {
+    return i18n.t("canvas.generation.anglePrompt", { angle: buildAngleLabel(params) });
+}
+
+/**
+ * Generate a new random seed distinct from the previous seed.
+ */
+export function generateNextSeed(previousSeed?: number, max = 9007199254740991): number {
+    let next = Math.floor(Math.random() * max);
+    if (previousSeed !== undefined && next === previousSeed) {
+        next = (next + 1) % max;
+    }
+    return next;
+}
+
+/**
+ * Builds connection(s) for a newly generated node.
+ * When intent is "repeat", instead of connecting from the current node itself,
+ * it connects from the current node's parent nodes (incoming connections).
+ * If no valid parent connections exist, it returns an empty list (the repeated
+ * node is a sibling/re-roll, and should never connect to the current node).
+ */
+export function buildGeneratedNodeConnections(
+    sourceNodeId: string,
+    targetNodeId: string,
+    intent: CanvasGenerationIntent,
+    connections: CanvasConnection[],
+    nodes: CanvasNodeData[],
+): CanvasConnection[] {
+    if (intent === "repeat") {
+        return duplicateIncomingConnections(sourceNodeId, targetNodeId, connections, nodes);
+    }
+    return [{ id: nanoid(), fromNodeId: sourceNodeId, toNodeId: targetNodeId, kind: "lineage" }];
+}
+
+/**
+ * Clones incoming parent connections from a source node to a target node.
+ * Validates that parent nodes exist on the canvas and deduplicates connections from the same parent.
+ */
+export function duplicateIncomingConnections(
+    sourceNodeId: string,
+    targetNodeId: string,
+    connections: CanvasConnection[],
+    nodes: CanvasNodeData[],
+): CanvasConnection[] {
+    const parentConnections = connections.filter(
+        (conn) => conn.toNodeId === sourceNodeId && nodes.some((node) => node.id === conn.fromNodeId),
+    );
+    const seenFromNodeIds = new Set<string>();
+    const result: CanvasConnection[] = [];
+    for (const conn of parentConnections) {
+        if (!seenFromNodeIds.has(conn.fromNodeId)) {
+            seenFromNodeIds.add(conn.fromNodeId);
+            result.push({
+                id: nanoid(),
+                fromNodeId: conn.fromNodeId,
+                toNodeId: targetNodeId,
+                kind: conn.kind,
+            });
+        }
+    }
+    return result;
+}
+
+/**
+ * Builds connection list for pasted / duplicated nodes.
+ * Internal connections between duplicated nodes are remapped using idMap.
+ * External incoming connections from parent nodes that exist on canvas are preserved.
+ */
+export function buildPastedNodeConnections(
+    sourceConnections: CanvasConnection[],
+    idMap: Map<string, string>,
+    canvasNodes: CanvasNodeData[],
+): CanvasConnection[] {
+    const seenPairs = new Set<string>();
+    const result: CanvasConnection[] = [];
+    for (const conn of sourceConnections) {
+        const toNodeId = idMap.get(conn.toNodeId);
+        if (!toNodeId) continue;
+        const fromNodeId = idMap.get(conn.fromNodeId) || (canvasNodes.some((n) => n.id === conn.fromNodeId) ? conn.fromNodeId : undefined);
+        if (!fromNodeId) continue;
+        const key = `${fromNodeId}->${toNodeId}`;
+        if (seenPairs.has(key)) continue;
+        seenPairs.add(key);
+        result.push({
+            ...conn,
+            id: nanoid(),
+            fromNodeId,
+            toNodeId,
+        });
+    }
+    return result;
+}
+

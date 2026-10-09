@@ -10,6 +10,7 @@ import nav from './locales/nav'
 import store from './locales/store'
 import dashboard from './locales/dashboard'
 import workbench from './locales/workbench'
+import canvas from './locales/canvas'
 import install from './locales/install'
 import logs from './locales/logs'
 import terminal from './locales/terminal'
@@ -36,6 +37,7 @@ export const MESSAGES = {
   ...store,
   ...dashboard,
   ...workbench,
+  ...canvas,
   ...install,
   ...logs,
   ...terminal,

@@ -47,6 +47,7 @@ if (bump) {
 }
 
 run('npm run typecheck')
+run('npm run build:canvas')
 run('npm run build')
 
 try {

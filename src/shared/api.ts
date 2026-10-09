@@ -250,6 +250,8 @@ export interface LauncherApi {
   openExternal(url: string): Promise<void>
   /** 切换启动器窗口原生全屏（工作台内嵌界面全屏时联动） */
   setFullScreen(flag: boolean): Promise<void>
+  /** 内嵌画布 webview 预加载脚本的 file:// 地址（dev=项目根，打包后=app.asar 内） */
+  getCanvasPreloadUrl(): Promise<string>
   detectGpu(): Promise<GpuInfo[]>
   appInfo(): Promise<AppInfo>
   /** 检查启动器自身的版本更新（GitHub 最新 release） */
@@ -355,6 +357,7 @@ export const IPC = {
   clipboardWrite: 'app:clipboardWrite',
   openExternal: 'app:openExternal',
   winFullScreen: 'win:fullscreen',
+  canvasPreload: 'canvas:preload',
   gpuDetect: 'sys:gpu',
   appInfo: 'app:info',
   appCheckUpdate: 'app:checkUpdate',

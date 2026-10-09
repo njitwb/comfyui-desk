@@ -36,6 +36,7 @@ if (bump) {
 run('node scripts/prepare-python.mjs')
 run('node scripts/prepare-git.mjs')
 run('npm run typecheck')
+run('npm run build:canvas')
 run('npm run build')
 
 // electron 解压后立刻重命名目录时,Defender 实时扫描可能持有句柄导致 EPERM;

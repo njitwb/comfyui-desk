@@ -32,6 +32,8 @@ export interface Settings {
   vramModeAutoApplied: boolean
   /** 是否为内嵌界面迁移过 --disable-auto-launch（一次性） */
   autoLaunchOffMigrated: boolean
+  /** 是否为无限画布迁移过 --enable-cors-header（一次性） */
+  corsHeaderMigrated: boolean
   /** 界面主题；空串 = 未选择，首次启动按系统补齐 */
   theme: Theme | ''
   /** 界面语言；空串 = 未选择，首次启动按系统补齐 */
@@ -61,6 +63,7 @@ const defaults: Settings = {
   hfMirror: true,
   vramModeAutoApplied: false,
   autoLaunchOffMigrated: false,
+  corsHeaderMigrated: false,
   theme: '',
   locale: '',
   syncComfyTheme: true,
@@ -122,13 +125,29 @@ function migrateAutoLaunchOff(s: Settings): boolean {
   return true
 }
 
+/**
+ * 迁移：内嵌无限画布跨源直连本机 ComfyUI（REST + WebSocket），而 ComfyUI 默认会 403 跨源请求，
+ * 一次性补上 --enable-cors-header 并同步高级选项勾选状态。只执行一次，之后用户可自行调整。
+ * 权衡：放开后任意网站可向本机 ComfyUI 提交请求（本地暴露与在浏览器里跑无限画布一致，属可接受范围）。
+ */
+function migrateCorsHeader(s: Settings): boolean {
+  if (s.corsHeaderMigrated) return false
+  const tokens = s.launchArgs.split(/\s+/).filter(Boolean)
+  if (!tokens.includes('--enable-cors-header')) {
+    s.launchArgs = [...tokens, '--enable-cors-header'].join(' ')
+    s.advArgs = { ...s.advArgs, enableCors: true }
+  }
+  s.corsHeaderMigrated = true
+  return true
+}
+
 export function loadSettings(): Settings {
   if (cache) return cache
   try {
     const raw = JSON.parse(fs.readFileSync(settingsFile(), 'utf-8'))
     const merged: Settings = { ...defaults, ...raw }
     migrateAdvIntoLaunch(merged)
-    const persist = migrateAutoLaunchOff(merged)
+    const persist = migrateAutoLaunchOff(merged) || migrateCorsHeader(merged)
     cache = merged
     if (persist) {
       try {

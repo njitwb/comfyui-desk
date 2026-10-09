@@ -33,6 +33,10 @@ ComfyUI 的网页界面直接内嵌在应用里，无需再打开浏览器；支
 
 在 ComfyUI 界面里点击缺失模型的「下载」，管家会自动接管链接并按类别存入对应模型目录，随后跳到「模型管理」页显示下载进度。
 
+#### 画布 · 无限画布创作
+
+内置无限画布创作工具，内嵌为独立页面：节点画布编排、文生图 / 图生图 / 视频 / 音频等多模态创作，创作时自动调用本机 ComfyUI 出图。页面主题与语言跟随应用（深色 / 亮色、中文 / English 双向联动）。该页面基于开源项目 [infinite-canvas](https://github.com/ZhuYichuan/infinite-canvas) 集成，完整版权与许可见该项目仓库。
+
 #### 安装 · 一键部署
 
 选择 Python 解释器、ComfyUI 版本、安装路径与 Torch 变体（自动按显卡推荐，也可指定 CUDA 或 CPU），右侧同时给出硬件检测结果；安装过程有实时进度条与滚动日志。安装的是官方稳定纯净版本，无任何整合包内容。后续规划做个整合包功能，可以联网查询可用整合包配置，在纯净版基础上安装整合包内容，敬请期待。
@@ -177,6 +181,10 @@ The ComfyUI web interface is embedded directly in the app, so no browser is need
 ![Workbench · light theme](docs/screenshots/02-workbench-light.png)
 
 Clicking "download" on a missing model inside the ComfyUI UI hands the link to the manager, which files it into the right model folder and switches to the Models page with live progress.
+
+#### Canvas — an infinite canvas studio
+
+An infinite-canvas creation tool is embedded as its own page: node-based canvas editing plus image / video / audio generation backed by your local ComfyUI. The page follows the app's theme and language (dark / light, Chinese / English, two-way sync). It is built on the open-source project [infinite-canvas](https://github.com/ZhuYichuan/infinite-canvas); copyright and license details live in that repository.
 
 #### Install — one-click deployment
 

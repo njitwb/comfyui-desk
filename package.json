@@ -7,8 +7,9 @@
   "author": "admin",
   "license": "MIT",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "npm run build:canvas && electron-vite dev",
     "build": "electron-vite build",
+    "build:canvas": "node scripts/build-canvas.mjs",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",

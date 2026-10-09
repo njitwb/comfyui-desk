@@ -1,0 +1,514 @@
+{
+  "2": {
+    "inputs": {
+      "detector": "segm/person_yolov8m-seg.pt",
+      "confidence": 0.35,
+      "crop_factor": 3,
+      "canvas_width": [
+        "116",
+        0
+      ],
+      "canvas_height": [
+        "116",
+        1
+      ],
+      "canvas_mode": "auto_capped_768",
+      "smooth_window": 11,
+      "size_smooth_window": 69,
+      "smooth_method": "gaussian",
+      "size_mode": "per_frame",
+      "identity_track": true,
+      "identity_threshold": 0.28,
+      "select": "largest_face",
+      "fallback_detector": "bbox/face_yolov8m.pt",
+      "fallback_head_frac": 0.5,
+      "select_index": 0,
+      "identity_model": "clip_vision",
+      "cut_detection": "none",
+      "cut_threshold": 3,
+      "absent_shots": "by_identity",
+      "X": 0,
+      "Y": 0,
+      "frame_index": 0,
+      "images": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "H3FaceTrackCrop",
+    "_meta": {
+      "title": "H3 Face Track + Crop"
+    }
+  },
+  "4": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE — video"
+    }
+  },
+  "5": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE — audio"
+    }
+  },
+  "6": {
+    "inputs": {
+      "image": "Qwen_image_2.1_00057.png [output]"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_02"
+    }
+  },
+  "7": {
+    "inputs": {
+      "image": "Qwen_image_2.1_00056.png [output]"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_03"
+    }
+  },
+  "9": {
+    "inputs": {
+      "prompt": [
+        "114",
+        0
+      ],
+      "width": [
+        "2",
+        4
+      ],
+      "height": [
+        "2",
+        5
+      ],
+      "length": [
+        "2",
+        6
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "109",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ],
+      "audio_vae": [
+        "5",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "115",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "6",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "7",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "113",
+        1
+      ],
+      "ref_images.ref_image_3": [
+        "119",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "120",
+        0
+      ],
+      "ref_images.ref_image_5": [
+        "121",
+        0
+      ],
+      "ref_images.ref_image_6": [
+        "124",
+        0
+      ],
+      "ref_images.ref_image_7": [
+        "123",
+        0
+      ],
+      "ref_images.ref_image_8": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "3. Conditioning + EMPTY AV latent"
+    }
+  },
+  "10": {
+    "inputs": {
+      "av_latent": [
+        "9",
+        1
+      ],
+      "images": [
+        "2",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "H3InjectVideoLatent",
+    "_meta": {
+      "title": "H3 Inject Video Latent (img2img)"
+    }
+  },
+  "12": {
+    "inputs": {
+      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Turbo LoRA — steps must match"
+    }
+  },
+  "13": {
+    "inputs": {
+      "model": [
+        "12",
+        0
+      ],
+      "av_latent": [
+        "10",
+        0
+      ],
+      "audio_vae": [
+        "5",
+        0
+      ],
+      "audio": [
+        "113",
+        1
+      ]
+    },
+    "class_type": "MiniMaxH3NativeAudioLock",
+    "_meta": {
+      "title": "5. Lock audio -> LIPSYNC"
+    }
+  },
+  "14": {
+    "inputs": {
+      "model": [
+        "31",
+        2
+      ],
+      "conditioning": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Guider"
+    }
+  },
+  "15": {
+    "inputs": {
+      "sampler_name": "er_sde"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "16": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 0.4,
+      "model": [
+        "31",
+        2
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "6. DENOISE - the key dial"
+    }
+  },
+  "17": {
+    "inputs": {
+      "noise_seed": 42
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "Noise (fix while testing)"
+    }
+  },
+  "18": {
+    "inputs": {
+      "noise": [
+        "17",
+        0
+      ],
+      "guider": [
+        "14",
+        0
+      ],
+      "sampler": [
+        "15",
+        0
+      ],
+      "sigmas": [
+        "16",
+        0
+      ],
+      "latent_image": [
+        "31",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "7. Sample"
+    }
+  },
+  "19": {
+    "inputs": {
+      "samples": [
+        "18",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "8. Decode refined crops"
+    }
+  },
+  "22": {
+    "inputs": {
+      "paste_region": "full_crop",
+      "mask_dilation": 24,
+      "feather": 24,
+      "colour_match": 1,
+      "blend": 1,
+      "undetected_frames": "composite_anyway",
+      "feather_scales_with_crop": true,
+      "base_images": [
+        "113",
+        0
+      ],
+      "refined_crops": [
+        "19",
+        0
+      ],
+      "transform": [
+        "2",
+        1
+      ]
+    },
+    "class_type": "H3FaceStitch",
+    "_meta": {
+      "title": "H3 Face Stitch Back"
+    }
+  },
+  "23": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "video/FaceRefined/output",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 16,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "22",
+        0
+      ],
+      "audio": [
+        "113",
+        1
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "output_video"
+    }
+  },
+  "31": {
+    "inputs": {
+      "denoise_multiplier_small_face": 1,
+      "denoise_multiplier_large_face": 0.35,
+      "scale_mode": "absolute_px",
+      "face_px_small": 30,
+      "face_px_large": 120,
+      "gamma": 1,
+      "smooth_frames": 13,
+      "model": [
+        "13",
+        0
+      ],
+      "av_latent": [
+        "13",
+        1
+      ],
+      "transform": [
+        "2",
+        1
+      ]
+    },
+    "class_type": "H3PerFrameDenoise",
+    "_meta": {
+      "title": "H3 Per-Frame Denoise"
+    }
+  },
+  "108": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "H3 model"
+    }
+  },
+  "109": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Text encoder"
+    }
+  },
+  "112": {
+    "inputs": {
+      "file": "canvas-video-video-1790494457326-r0ogf.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "ref_video_01"
+    }
+  },
+  "113": {
+    "inputs": {
+      "video": [
+        "112",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "获取视频元素"
+    }
+  },
+  "114": {
+    "inputs": {
+      "value": "subject_definitions:\n<Picture 1> 是 [Shot 1] 的首帧锚点和场景参考,展示了男生和女生在墙角一起摆姿势的画面,锁定了开场构图、环境、光影和情侣照姿态。\n\n<Subject 1> 是 <Picture 2> 中以孙悟空造型出现的男生,在 <Picture 1> 里位于情侣画面的男生一侧,作为男生这一侧的视觉锚点。\n\n<Subject 2> 是 <Picture 3> 中以林黛玉造型出现的女生,在 <Picture 1> 里位于情侣画面的女生一侧,作为女生这一侧的视觉锚点。\n\nsummary:\n[reference generation] 目标视频是一段 5 秒单镜头、围绕情侣墙边拍照的甜蜜瞬间,以 <Picture 1> 作为锚点。<Subject 1> 与 <Subject 2>一起在墙角摆姿势,表情逐渐放松、目光交汇,最终定格在一个更亲近、更亲密的姿态上。\n\nretention_analysis:\n<Picture 1>([Shot 1] 首帧锚点):fully_preserved — 开场构图、墙角环境、光影、姿态和两人相对站位全部保留,作为本镜头的视觉锚点。\n\n<Subject 1>(贯穿全片):fully_preserved — 男生的孙悟空造型、人物身份、服饰细节以及在情侣中的站位(来自 <Picture 2>)全部保留。\n\n<Subject 2>(贯穿全片):fully_preserved — 女生的林黛玉造型、人物身份、服饰细节以及在情侣中的站位(来自 <Picture 3>)全部保留。\n\ndetailed_description:\n整体风格是实拍、甜蜜、恋人感的墙边拍照瞬间。画面采用柔和的暖调主光与温和的环境补光,在皮肤和墙角表面都铺上一层温暖的微光,营造亲近、浪漫的氛围。\n\n[Shot 1] 镜头从 <Picture 1> 所确立的构图起幅,呈现 <Subject 1> 和 <Subject 2> 在墙角一起摆姿势的画面。<Subject 1>,即以孙悟空造型出现的男生(视觉身份来自 <Picture 2>),站在情侣画面的男生一侧;<Subject 2>,即以林黛玉造型出现的女生(视觉身份来自 <Picture 3>),站在情侣画面的女生一侧。两人都面对镜头,身后的墙角环境以柔和的墙面质感、隐约的建筑细节和温暖的氛围色调呈现。两人表情是为拍照而自然摆出的柔和姿态,女生保持着从容温柔的微笑,男生则是平静愉悦的表情。0 到 1 秒,女生的目光从镜头轻轻偏向男生,头微微向他一侧倾斜,微笑随之变得更私密、更俏皮,身体姿态也放松下来,显得更自然。1 到 3 秒,男生把头转向女生,两人目光短暂交汇;男生的表情舒展成一个温柔的咧嘴笑,女生以安静、爱意的微笑回应。女生的手轻轻朝男生手臂的方向飘动了一下,像是一个无意识的小动作,男生则把重心略微向她靠拢。3 到 5 秒,两人把目光重新投回镜头,带着放松、甜蜜的神情;接着男生把肩膀又向她靠近了一点点,女生微微扬起下巴,呈现一副幸福、焕发的神情。两人在镜头结束前定格在一个更亲近、更亲密的姿态上,脸庞微微转向彼此;镜头全程保持同一段连续透视,没有切点、没有变焦。\n\nnon_diegetic_music:\n轻柔的原声吉他音型,慢速节奏,下方铺着柔和、持续的低音弦乐,在两人表情放松时轻轻扬起来,在最后一帧柔和收尾。\n\noverall_soundscape:\n柔和的户外环境底噪贯穿全片,远处有微风掠过墙面的轻响,底层是安静的人流低噪。女生靠近男生时,衣物有轻微的布料窸窣声。"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "prompt"
+    }
+  },
+  "115": {
+    "inputs": {
+      "image": "canvas-image-image-1790493996713-ogkn7-thesBwINFEzran1853JOn (1).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_01"
+    }
+  },
+  "116": {
+    "inputs": {
+      "image": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸"
+    }
+  },
+  "119": {
+    "inputs": {
+      "image": "canvas-image-image-1790493996713-ogkn7-thesBwINFEzran1853JOn (1).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_04"
+    }
+  },
+  "120": {
+    "inputs": {
+      "image": "Qwen_image_2.1_00057.png [output]"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_05"
+    }
+  },
+  "121": {
+    "inputs": {
+      "image": "Qwen_image_2.1_00056.png [output]"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_06"
+    }
+  },
+  "122": {
+    "inputs": {
+      "image": "Qwen_image_2.1_00056.png [output]"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_09"
+    }
+  },
+  "123": {
+    "inputs": {
+      "image": "Qwen_image_2.1_00057.png [output]"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_08"
+    }
+  },
+  "124": {
+    "inputs": {
+      "image": "canvas-image-image-1790493996713-ogkn7-thesBwINFEzran1853JOn (1).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_07"
+    }
+  }
+}

@@ -1,13 +1,24 @@
-import { app, BrowserWindow, nativeTheme } from 'electron'
+import { app, BrowserWindow, nativeTheme, protocol } from 'electron'
 import path from 'node:path'
 import { registerIpc, broadcastRenderer } from './ipc'
 import { IPC } from '../shared/api'
 import { comfy } from './process'
 import { installGuestGuards } from './guest-guard'
+import { registerCanvasServer } from './canvas-server'
 import { resolveAppearance, saveSettings } from './settings'
 import { reconcileTheme } from './comfy-theme'
 import { setMainLocale, t } from './i18n'
 import type { Theme } from '../shared/appearance'
+
+// canvas:// 特权协议：standard 保证 origin 稳定（localStorage/IndexedDB 可用），
+// secure 使 fetch http://127.0.0.1（环回地址可信源）不受混合内容拦截；
+// 必须在 app ready 之前注册
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'canvas',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
+  }
+])
 
 // guest 弹窗 / 导航防火墙：模型链接广播给工作台，外链转系统浏览器
 installGuestGuards({
@@ -39,6 +50,7 @@ if (!gotLock) {
 
     // 日志页只展示本次启动内容，历史在日志文件中存档
     comfy.pushLog('sys', t('app.logStartup', { version: app.getVersion() }))
+    registerCanvasServer()
     registerIpc()
     createWindow(currentTheme)
 

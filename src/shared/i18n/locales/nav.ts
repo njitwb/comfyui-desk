@@ -4,6 +4,7 @@ import type { MessageTable } from '../types'
 export default {
   'nav.dashboard': ['仪表盘', 'Dashboard'],
   'nav.workbench': ['工作台', 'Workbench'],
+  'nav.canvas': ['画布', 'Canvas'],
   'nav.install': ['安装', 'Install'],
   'nav.logs': ['日志', 'Logs'],
   'nav.terminal': ['终端', 'Terminal'],

@@ -17,6 +17,11 @@ function allowLocalNav(url: string): boolean {
   return /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:[/?#]|$)/i.test(url)
 }
 
+/** 内嵌无限画布（canvas://app/...）主帧导航放行：SPA 硬导航 / reload 会触发 will-navigate */
+function allowCanvasNav(url: string): boolean {
+  return /^canvas:\/\/app(?:[/?#]|$)/i.test(url)
+}
+
 /**
  * webview guest 的弹窗 / 导航防火墙：
  * 模型链接交给 onModel 回调，其他 http(s) 转系统浏览器，主帧只允许留在本机 ComfyUI。
@@ -43,7 +48,7 @@ export function installGuestGuards(deps: GuardDeps): void {
         ev.preventDefault()
       })
       contents.on('will-navigate', (ev, url) => {
-        if (allowLocalNav(url)) return
+        if (allowLocalNav(url) || allowCanvasNav(url)) return
         ev.preventDefault()
         if (isModelUrlStr(url)) {
           deps.log(t('m.misc.guard.navDownloadBlocked', { url }))

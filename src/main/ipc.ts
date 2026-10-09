@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell, BrowserWindow, app, session, nativeTheme, clipboard } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { IPC } from '../shared/api'
 import type { GpuInfo, InstallOptions, ModelSource, ProgressEvent } from '../shared/api'
 import { loadSettings, saveSettings, paths, isInstalled, installedVersion, settingsPath, Settings, defaultRoot } from './settings'
@@ -138,6 +139,7 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.winFullScreen, (e, flag: boolean) => {
     BrowserWindow.fromWebContents(e.sender)?.setFullScreen(!!flag)
   })
+  ipcMain.handle(IPC.canvasPreload, () => pathToFileURL(path.join(app.getAppPath(), 'resources', 'canvas-preload.cjs')).href)
   ipcMain.handle(IPC.gpuDetect, () => detectGpu())
   ipcMain.handle(IPC.appInfo, () => ({
     version: app.getVersion(),

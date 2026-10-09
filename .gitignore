@@ -5,3 +5,7 @@ dist-types
 resources
 release
 .trae
+
+# 内嵌无限画布（vendored）：依赖与构建产物不入库
+canvas/web/node_modules
+canvas/web/dist

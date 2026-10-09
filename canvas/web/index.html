@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN" class="font-sans">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="一个无限画布创作工具" />
+        <link rel="icon" href="/logo.svg" />
+        <title>无限画布</title>
+        <script>
+            // 内嵌于桌面管家时，宿主通过 ?theme=/?lang= 注入主题与语言：
+            // 首帧绘制前写进 localStorage（theme_store / locale），让 zustand persist 与 i18next 初始化即取到正确值，避免闪烁
+            try {
+                var q = new URLSearchParams(location.search);
+                var qTheme = q.get("theme");
+                if (qTheme === "light" || qTheme === "dark") {
+                    localStorage.setItem("infinite-canvas:theme_store", JSON.stringify({ state: { theme: qTheme }, version: 0 }));
+                }
+                var qLang = q.get("lang");
+                if (qLang === "zh" || qLang === "zh-CN") {
+                    localStorage.setItem("infinite-canvas:locale", "zh-CN");
+                } else if (qLang === "en" || qLang === "en-US") {
+                    localStorage.setItem("infinite-canvas:locale", "en-US");
+                }
+                var s = JSON.parse(localStorage.getItem("infinite-canvas:theme_store") || "{}");
+                var t = s.state && s.state.theme === "light" ? "light" : "dark";
+                document.documentElement.classList.toggle("dark", t === "dark");
+                document.documentElement.style.colorScheme = t;
+            } catch (e) {}
+        </script>
+    </head>
+    <body class="bg-background text-foreground antialiased">
+        <div id="root"></div>
+        <script src="/config.js"></script>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
+</html>

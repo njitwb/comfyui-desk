@@ -1,0 +1,252 @@
+import type { CSSProperties } from "react";
+import { Image as ImageIcon, LoaderCircle, MessageSquare, Music2, Play, Settings2, Square, Video } from "lucide-react";
+import { Button, Segmented } from "antd";
+import { useTranslation } from "react-i18next";
+
+import { ModelPicker } from "@/components/model-picker";
+import { ChannelWorkflowPicker } from "@/components/channel-workflow-picker";
+import { decodeChannelModel, defaultConfig, encodeChannelModel, findWorkflow, getDefaultWorkflow, resolveModelChannel, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { canvasThemes } from "@/lib/canvas-theme";
+import { useThemeStore } from "@/stores/use-theme-store";
+import { normalizeVideoSizeValue } from "@/components/video-settings-panel";
+import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
+import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
+import { CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
+import { CanvasTextSettingsPopover } from "./canvas-text-settings-popover";
+import type { CanvasGenerationMode, CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
+
+type CanvasConfigNodePanelProps = {
+    node: CanvasNodeData;
+    isRunning: boolean;
+    inputSummary: { textCount: number; imageCount: number; videoCount: number; audioCount: number };
+    onConfigChange: (nodeId: string, patch: Partial<CanvasNodeMetadata>) => void;
+    onGenerate: (nodeId: string) => void;
+    onStop: (nodeId: string) => void;
+    onComposerToggle: () => void;
+};
+
+export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigChange, onGenerate, onStop, onComposerToggle }: CanvasConfigNodePanelProps) {
+    const { t } = useTranslation();
+    const globalConfig = useEffectiveConfig();
+    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const mode = node.metadata?.generationMode || "image";
+    const config = buildNodeConfig(globalConfig, node, mode);
+    const chipStyle = { background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text };
+    const hasAnyInput = Boolean(inputSummary.textCount || inputSummary.imageCount || inputSummary.videoCount || inputSummary.audioCount);
+    const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
+    const canGenerate = hasComposerContent || hasAnyInput;
+
+    return (
+        <div className="flex h-full w-full cursor-move flex-col px-3 pb-3 pt-7 text-sm" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="shrink-0 text-sm font-semibold">{t("canvas.configNode.title")}</div>
+                <div className="cursor-default" onMouseDown={(event) => event.stopPropagation()}>
+                    <Segmented
+                        size="small"
+                        className="canvas-config-mode !rounded-md !p-0.5"
+                        value={mode}
+                        onChange={(value) => {
+                            const generationMode = value as CanvasGenerationMode;
+                            onConfigChange(node.id, {
+                                generationMode,
+                                ...(generationMode === "video" ? { size: normalizeVideoSizeValue(node.metadata?.size || globalConfig.size) } : {}),
+                            });
+                        }}
+                        options={[
+                            {
+                                value: "image",
+                                label: (
+                                    <span className="inline-flex items-center gap-1">
+                                        <ImageIcon className="size-3.5" />
+                                        {t("canvas.configNode.image")}
+                                    </span>
+                                ),
+                            },
+                            {
+                                value: "text",
+                                label: (
+                                    <span className="inline-flex items-center gap-1">
+                                        <MessageSquare className="size-3.5" />
+                                        {t("canvas.configNode.text")}
+                                    </span>
+                                ),
+                            },
+                            {
+                                value: "video",
+                                label: (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Video className="size-3.5" />
+                                        {t("canvas.configNode.video")}
+                                    </span>
+                                ),
+                            },
+                            {
+                                value: "audio",
+                                label: (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Music2 className="size-3.5" />
+                                        {t("canvas.configNode.audio", { defaultValue: "音频" })}
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
+                </div>
+            </div>
+
+            <div className="mb-2 flex flex-wrap gap-1.5">
+                <InputChip label={t("canvas.configNode.prompt")} value={t("canvas.configNode.items", { count: inputSummary.textCount })} style={chipStyle} />
+                <InputChip label={t("canvas.configNode.references")} value={t("canvas.configNode.images", { count: inputSummary.imageCount })} style={chipStyle} />
+                <InputChip label={t("canvas.configNode.videoReferences")} value={t("canvas.configNode.items", { count: inputSummary.videoCount })} style={chipStyle} />
+                <InputChip label={t("canvas.configNode.audioReferences")} value={t("canvas.configNode.items", { count: inputSummary.audioCount })} style={chipStyle} />
+                <button type="button" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px]" style={chipStyle} onMouseDown={(event) => event.stopPropagation()} onClick={onComposerToggle}>
+                    <Settings2 className="size-3.5" />
+                    {t("canvas.configNode.compose")}
+                </button>
+            </div>
+
+            <div className="mb-2 grid min-w-0 cursor-default grid-cols-[minmax(0,1fr)_148px] items-center gap-2" onMouseDown={(event) => event.stopPropagation()}>
+                <ChannelWorkflowPicker
+                    category={
+                        mode === "image"
+                            ? (inputSummary.imageCount > 0 ? "i2i" : "t2i")
+                            : mode === "video"
+                            ? ["omniVideo", "frameVideo", "faceRefine"]
+                            : mode === "audio"
+                            ? "audio"
+                            : "text"
+                    }
+                    preferredCategory={mode === "video" ? (findWorkflow(globalConfig, node.metadata?.channelId, node.metadata?.workflowId)?.category || (config.videoMode === "frame" ? "frameVideo" : "omniVideo")) : undefined}
+                    channelId={node.metadata?.channelId}
+                    workflowId={node.metadata?.workflowId}
+                    onChange={(channelId, workflowId, workflow) => {
+                        const patch: Partial<CanvasNodeMetadata> = { channelId, workflowId };
+                        if (mode === "video") {
+                            patch.videoMode = workflow?.category === "frameVideo" ? "frame" : workflow?.category === "omniVideo" ? "omni" : config.videoMode;
+                        }
+                        onConfigChange(node.id, patch);
+                    }}
+                    className="canvas-compact-control h-10"
+                />
+                {mode === "video" ? (
+                    <CanvasVideoSettingsPopover
+                        config={config}
+                        placement="topRight"
+                        buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2"
+                        onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value, config))}
+                    />
+                ) : mode === "image" ? (
+                    <CanvasImageSettingsPopover config={config} placement="topRight" autoAdjustOverflow={false} buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })} />
+                ) : mode === "audio" ? (
+                    <CanvasAudioSettingsPopover
+                        config={config}
+                        placement="topRight"
+                        buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2"
+                        onConfigChange={(key, value) => onConfigChange(node.id, { seconds: value, audioSeconds: value })}
+                    />
+                ) : (
+                    <CanvasTextSettingsPopover config={config} count={node.metadata?.textCount || 1} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(_, value) => onConfigChange(node.id, { reasoningEffort: value })} onCountChange={(textCount) => onConfigChange(node.id, { textCount })} />
+                )}
+            </div>
+
+            <Button
+                type="primary"
+                className="mt-auto !h-9 !w-full !cursor-pointer !rounded-lg"
+                danger={isRunning}
+                disabled={!isRunning && !canGenerate}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => (isRunning ? onStop(node.id) : onGenerate(node.id))}
+            >
+                <span className="inline-flex items-center gap-1.5">
+                    {isRunning ? (
+                        <>
+                            <LoaderCircle className="size-4 animate-spin" />
+                            <Square className="size-3.5 fill-current" />
+                            <span>{t("canvas.configNode.stop")}</span>
+                        </>
+                    ) : (
+                        <>
+                            <Play className="size-4" />
+                            <span>{t("canvas.configNode.generate")}</span>
+                        </>
+                    )}
+                </span>
+            </Button>
+        </div>
+    );
+}
+
+function InputChip({ label, value, style }: { label: string; value: string; style: CSSProperties }) {
+    return (
+        <div className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px]" style={style}>
+            <span>{label}</span>
+            <span className="font-medium">{value}</span>
+        </div>
+    );
+}
+
+function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasGenerationMode): AiConfig {
+    const rawModel = node.metadata?.model;
+    const model = resolveModelForCapability(globalConfig, rawModel, mode);
+    const isFrame = model.toLowerCase().includes("frame") || model.includes("首尾帧");
+    const isOmni = model.toLowerCase().endsWith("comfyui video") || model.toLowerCase().includes("omni");
+    let videoMode = node.metadata?.videoMode;
+    if (mode === "video" && node.metadata?.workflowId) {
+        const wf = findWorkflow(globalConfig, node.metadata.channelId, node.metadata.workflowId);
+        if (wf?.category === "frameVideo") videoMode = "frame";
+        else if (wf?.category === "omniVideo") videoMode = "omni";
+    }
+    if (!videoMode) {
+        videoMode = isFrame ? "frame" : isOmni ? "omni" : globalConfig.videoMode || defaultConfig.videoMode || "omni";
+    }
+
+    return {
+        ...globalConfig,
+        model,
+        videoModel: mode === "video" ? model : globalConfig.videoModel,
+        imageModel: mode === "image" ? model : globalConfig.imageModel,
+        textModel: mode === "text" ? model : globalConfig.textModel,
+        audioModel: mode === "audio" ? model : globalConfig.audioModel,
+        videoMode,
+        reasoningEffort: node.metadata?.reasoningEffort || globalConfig.reasoningEffort || defaultConfig.reasoningEffort,
+        quality: node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
+        size: node.metadata?.size || globalConfig.size || defaultConfig.size,
+        background: node.metadata?.background ?? globalConfig.background ?? defaultConfig.background,
+        videoSeconds: (node.metadata?.seconds === "6" ? undefined : node.metadata?.seconds) || (globalConfig.videoSeconds === "6" ? "5" : globalConfig.videoSeconds) || defaultConfig.videoSeconds,
+        audioSeconds: node.metadata?.seconds || globalConfig.audioSeconds || defaultConfig.audioSeconds || "60",
+        vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
+        videoGenerateAudio: node.metadata?.generateAudio || globalConfig.videoGenerateAudio || defaultConfig.videoGenerateAudio,
+        videoWatermark: node.metadata?.watermark || globalConfig.videoWatermark || defaultConfig.videoWatermark,
+        audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice || defaultConfig.audioVoice,
+        audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
+        audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
+        audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
+        count: String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
+    };
+}
+
+function videoConfigPatch(key: keyof AiConfig, value: string, config?: AiConfig) {
+    if (key === "videoSeconds") return { seconds: value };
+    if (key === "videoGenerateAudio") return { generateAudio: value };
+    if (key === "videoWatermark") return { watermark: value };
+    if (key === "videoMode") {
+        const patch: Record<string, unknown> = { videoMode: value };
+        if (config) {
+            const channel = resolveModelChannel(config, config.model || config.videoModel);
+            if (value === "frame") {
+                const frameModel = channel.models.find((m) => m.name === "ComfyUI Frame Video" || m.name.toLowerCase().includes("frame") || m.name.includes("首尾帧"));
+                if (frameModel) patch.model = encodeChannelModel(channel.id, frameModel.name);
+                const defaultFrameWf = getDefaultWorkflow(channel, "frameVideo");
+                if (defaultFrameWf) patch.workflowId = defaultFrameWf.id;
+            } else if (value === "omni") {
+                const omniModel = channel.models.find((m) => m.name === "ComfyUI Video" || (!m.name.toLowerCase().includes("frame") && !m.name.includes("首尾帧") && m.capability === "video"));
+                if (omniModel) patch.model = encodeChannelModel(channel.id, omniModel.name);
+                const defaultOmniWf = getDefaultWorkflow(channel, "omniVideo");
+                if (defaultOmniWf) patch.workflowId = defaultOmniWf.id;
+            }
+        }
+        return patch;
+    }
+    return { [key]: value };
+}

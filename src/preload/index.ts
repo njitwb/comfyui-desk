@@ -19,6 +19,7 @@ const api: import('../shared/api').LauncherApi = {
   clipboardWrite: (text: string) => ipcRenderer.invoke(IPC.clipboardWrite, text),
   openExternal: (url: string) => ipcRenderer.invoke(IPC.openExternal, url),
   setFullScreen: (flag: boolean) => ipcRenderer.invoke(IPC.winFullScreen, flag),
+  getCanvasPreloadUrl: () => ipcRenderer.invoke(IPC.canvasPreload),
   detectGpu: () => ipcRenderer.invoke(IPC.gpuDetect),
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
   checkUpdate: () => ipcRenderer.invoke(IPC.appCheckUpdate),
