@@ -8,12 +8,14 @@ import { RouterProvider } from "react-router-dom";
 import { AppProviders } from "@/components/layout/app-providers";
 import "@/i18n";
 import { initAnalytics } from "@/lib/analytics";
-import { bindDeskAppearance } from "@/lib/desk-bridge";
+import { bindDeskAgentDock, bindDeskAppearance } from "@/lib/desk-bridge";
 import { router } from "@/router";
 
 initAnalytics();
 // 内嵌于桌面管家时接收宿主下发的主题/语言（独立运行无桥则空操作）
 bindDeskAppearance();
+// 同步宿主右侧 Harness（dsh）dock 的开关状态，用于高亮 Agent 按钮
+bindDeskAgentDock();
 
 document.body.style.fontFamily = '"SF Pro Display","SF Pro Text","PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif';
 

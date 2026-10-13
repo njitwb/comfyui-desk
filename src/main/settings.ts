@@ -2,6 +2,7 @@ import { app, nativeTheme } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { buildAdvancedArgs, type AdvArgs } from '../shared/advArgs'
+import { DEFAULT_CANVAS_AGENT_PORT, DEFAULT_DSH_PORT } from '../shared/api'
 import type { Locale } from '../shared/i18n/types'
 import type { Theme } from '../shared/appearance'
 import { isWin, venvScriptsRel, venvPythonFileName } from './platform'
@@ -42,6 +43,14 @@ export interface Settings {
   syncComfyTheme: boolean
   /** 运行日志保留的最大行数（超出自动丢弃最早的行，0/非法值回退默认 5000） */
   logMaxLines: number
+  /** 是否随应用自动启动「无限画布」伴生服务（本地 Agent + MCP 连接器） */
+  canvasAgentEnabled: boolean
+  /** 伴生服务监听端口 */
+  canvasAgentPort: number
+  /** 是否随应用自动启动 DeepSeek Harness（本地 agent harness + Web UI） */
+  dshEnabled: boolean
+  /** Harness Web UI 监听端口 */
+  dshPort: number
 }
 
 const defaults: Settings = {
@@ -67,7 +76,11 @@ const defaults: Settings = {
   theme: '',
   locale: '',
   syncComfyTheme: true,
-  logMaxLines: 5000
+  logMaxLines: 5000,
+  canvasAgentEnabled: true,
+  canvasAgentPort: DEFAULT_CANVAS_AGENT_PORT,
+  dshEnabled: true,
+  dshPort: DEFAULT_DSH_PORT
 }
 
 export const REPO_URLS: Record<Exclude<GitMirror, 'custom'>, string> = {

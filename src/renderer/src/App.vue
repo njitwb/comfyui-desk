@@ -9,6 +9,7 @@ import type { Theme } from '../../shared/appearance'
 import Dashboard from './views/Dashboard.vue'
 import Workbench from './views/Workbench.vue'
 import Canvas from './views/Canvas.vue'
+import Harness from './views/Harness.vue'
 import Install from './views/Install.vue'
 import Logs from './views/Logs.vue'
 import Terminal from './views/Terminal.vue'
@@ -20,7 +21,7 @@ import Settings from './views/Settings.vue'
 import About from './views/About.vue'
 import appIcon from './assets/brand/app-icon.png'
 
-type PageKey = 'dashboard' | 'workbench' | 'canvas' | 'install' | 'logs' | 'terminal' | 'models' | 'nodes' | 'workflows' | 'tools' | 'settings' | 'about'
+type PageKey = 'dashboard' | 'workbench' | 'canvas' | 'harness' | 'install' | 'logs' | 'terminal' | 'models' | 'nodes' | 'workflows' | 'tools' | 'settings' | 'about'
 const page = ref<PageKey>('dashboard')
 const collapsed = ref(false)
 
@@ -28,6 +29,7 @@ const navs: { key: PageKey; label: MessageKey; icon: string }[] = [
   { key: 'dashboard', label: 'nav.dashboard', icon: '◈' },
   { key: 'workbench', label: 'nav.workbench', icon: '▣' },
   { key: 'canvas', label: 'nav.canvas', icon: '✎' },
+  { key: 'harness', label: 'nav.harness', icon: '⬢' },
   { key: 'install', label: 'nav.install', icon: '⬇' },
   { key: 'logs', label: 'nav.logs', icon: '≡' },
   { key: 'terminal', label: 'nav.terminal', icon: '❯' },
@@ -39,7 +41,7 @@ const navs: { key: PageKey; label: MessageKey; icon: string }[] = [
   { key: 'about', label: 'nav.about', icon: 'ⓘ' }
 ]
 
-const pages: Record<PageKey, unknown> = { dashboard: Dashboard, workbench: Workbench, canvas: Canvas, install: Install, logs: Logs, terminal: Terminal, models: Models, nodes: Nodes, workflows: Workflows, tools: Tools, settings: Settings, about: About }
+const pages: Record<PageKey, unknown> = { dashboard: Dashboard, workbench: Workbench, canvas: Canvas, harness: Harness, install: Install, logs: Logs, terminal: Terminal, models: Models, nodes: Nodes, workflows: Workflows, tools: Tools, settings: Settings, about: About }
 const current = computed(() => pages[page.value])
 
 const statusKey: Record<string, MessageKey> = { stopped: 'app.status.stopped', starting: 'app.status.starting', running: 'app.status.running', error: 'app.status.error' }
@@ -142,12 +144,13 @@ api.onDownloadTaken(({ filename }) => {
     </aside>
     <button v-if="collapsed" class="btn side-expand" :title="t('nav.expand')" @click="collapsed = false">☰</button>
     <main class="main">
-      <!-- 工作台 / 无限画布常驻挂载（v-show）：webview 脱离 DOM 后会重载，不能走 KeepAlive 挂起 -->
+      <!-- 工作台 / 无限画布 / Harness 常驻挂载（v-show）：webview 脱离 DOM 后会重载，不能走 KeepAlive 挂起 -->
       <Workbench v-show="page === 'workbench'" @nav="(k: PageKey) => (page = k)" />
       <Canvas v-show="page === 'canvas'" @nav="(k: PageKey) => (page = k)" />
+      <Harness v-show="page === 'harness'" />
       <!-- 状态型页面缓存实例（开关切换不丢终端输出/安装进度）；:key 必加，否则 KeepAlive 会缓存错配 -->
       <KeepAlive :include="['Terminal', 'Logs', 'Install', 'Tools', 'Nodes']">
-        <component :is="current" :key="page" v-if="page !== 'workbench' && page !== 'canvas'" @nav="(k: PageKey) => (page = k)" />
+        <component :is="current" :key="page" v-if="page !== 'workbench' && page !== 'canvas' && page !== 'harness'" @nav="(k: PageKey) => (page = k)" />
       </KeepAlive>
     </main>
     <div v-if="store.progress" class="toast mono">{{ store.progress.stage }} · {{ store.progress.message }}</div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '../api'
-import { store, refreshSettings, refreshInfo, loadTorchIndexes, torchLabel } from '../store'
+import { store, refreshSettings, refreshInfo, loadTorchIndexes, torchLabel, refreshAgent } from '../store'
 import { buildAdvancedArgs, parseAdvancedArgs, ADV_KEYS } from '../../../shared/advArgs'
 import { t, locale, setLocale, type Locale } from '../i18n'
 import { theme, setTheme } from '../theme'
@@ -337,6 +337,7 @@ onMounted(async () => {
   prevGenerated.value = buildAdvancedArgs(adv.value)
   lastSaved = snapshot()
   void loadTorchIndexes()
+  void refreshAgent()
 })
 
 /** 深拷贝为纯对象：Vue 响应式 Proxy 无法通过 IPC 结构化克隆 */
@@ -384,6 +385,43 @@ async function applyLocale(v: Locale): Promise<void> {
   await api.saveSettings({ locale: v })
   await refreshSettings()
 }
+
+/** 画布伴生服务：状态徽标文案与配色 */
+const agentPill = computed(() => store.agent?.status || 'stopped')
+const agentStatusLabel = computed<MessageKey>(() => {
+  const st = store.agent?.status
+  if (st === 'running') return 'settings.agent.status.running'
+  if (st === 'starting') return 'settings.agent.status.starting'
+  if (st === 'error') return 'settings.agent.status.error'
+  return 'settings.agent.status.stopped'
+})
+/** 复用外部实例时额外提示（此时停止不会结束对方的进程） */
+const agentExternal = computed(() => store.agent?.mode === 'external')
+
+function toast(msg: string): void {
+  window.dispatchEvent(new CustomEvent('app-toast', { detail: msg }))
+}
+
+async function restartAgent(): Promise<void> {
+  error.value = ''
+  try {
+    await api.agentRestart()
+    await refreshAgent()
+  } catch (e) {
+    error.value = (e as Error).message || String(e)
+  }
+}
+
+async function copyMcpConfig(): Promise<void> {
+  error.value = ''
+  try {
+    const cfg = await api.agentMcpConfig()
+    await api.clipboardWrite(cfg.json)
+    toast(t('settings.agent.mcp.copied'))
+  } catch (e) {
+    error.value = (e as Error).message || String(e)
+  }
+}
 </script>
 
 <template>
@@ -417,6 +455,35 @@ async function applyLocale(v: Locale): Promise<void> {
         <input id="syncComfyTheme" v-model="(s.syncComfyTheme as boolean)" type="checkbox" />
         <label for="syncComfyTheme" style="margin: 0">{{ t('settings.appearance.syncComfyTheme') }}</label>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>{{ t('settings.agent.title') }}</h3>
+      <div class="hint" style="margin-bottom: 12px">{{ t('settings.agent.sub') }}</div>
+      <div class="row" style="align-items: flex-start; gap: 20px">
+        <div class="field row" style="gap: 6px; align-items: center; margin: 0">
+          <input id="agentEnabled" v-model="(s.canvasAgentEnabled as boolean)" type="checkbox" />
+          <label for="agentEnabled" style="margin: 0">{{ t('settings.agent.enable') }}</label>
+        </div>
+        <div class="field" style="width: 160px; margin: 0">
+          <label>{{ t('settings.agent.port') }}</label>
+          <input v-model.number="(s.canvasAgentPort as number)" type="number" min="1" max="65535" />
+        </div>
+        <div class="field" style="margin: 0">
+          <label>{{ t('settings.agent.status') }}</label>
+          <div class="row" style="gap: 10px; align-items: center">
+            <span class="pill" :class="agentPill"><span class="dot"></span>{{ t(agentStatusLabel) }}</span>
+            <span v-if="agentExternal" class="muted">{{ t('settings.agent.mode.external') }}</span>
+          </div>
+        </div>
+      </div>
+      <div v-if="store.agent?.error" class="hint" style="color: var(--red); margin-top: 10px">{{ store.agent.error }}</div>
+      <div class="row" style="gap: 10px; margin-top: 14px">
+        <button class="btn small" @click="restartAgent">{{ t('settings.agent.restart') }}</button>
+        <button class="btn small" @click="copyMcpConfig">{{ t('settings.agent.mcp') }}</button>
+      </div>
+      <div class="hint" style="margin-top: 10px">{{ t('settings.agent.mcp.hint') }}</div>
+      <div class="hint" style="margin-top: 4px">{{ t('settings.agent.harnessNote') }}</div>
     </div>
 
     <div class="card">

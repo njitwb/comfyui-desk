@@ -18,6 +18,56 @@ export interface PythonInfo {
 
 export type ComfyStatus = 'stopped' | 'starting' | 'running' | 'error'
 
+/** 画布伴生服务默认监听端口（与 canvas-agent 上游约定一致） */
+export const DEFAULT_CANVAS_AGENT_PORT = 17371
+
+export type CanvasAgentStatus = 'stopped' | 'starting' | 'running' | 'error'
+
+/** managed=由本应用启动的子进程；external=复用了已在运行的实例；null=未运行 */
+export type CanvasAgentMode = 'managed' | 'external' | null
+
+export interface CanvasAgentInfo {
+  status: CanvasAgentStatus
+  mode: CanvasAgentMode
+  port: number
+  /** 未运行时为空串 */
+  url: string
+  /** 连接令牌（画布 SPA 需要），未运行时为空串 */
+  token: string
+  /** 与画布约定的协议版本，未运行时为 0 */
+  protocolVersion: number
+  /** 失败原因（端口被占用 / 启动超时等），正常时为空串 */
+  error: string
+}
+
+/** MCP 客户端配置（供「复制 MCP 配置」按钮使用） */
+export interface CanvasAgentMcpConfig {
+  /** 可直接粘贴进 MCP 客户端 mcp.json 的 JSON 文本 */
+  json: string
+  /** 稳定副本内 dist/index.js 的绝对路径（排查用） */
+  path: string
+}
+
+/** DeepSeek Harness（dsh）Web UI 默认监听端口，避开 canvas-agent 的 17371 */
+export const DEFAULT_DSH_PORT = 17372
+
+export type DshStatus = 'stopped' | 'starting' | 'running' | 'error'
+
+export interface DshInfo {
+  status: DshStatus
+  port: number
+  /**
+   * 带一次性进程 token 的 Web UI 地址（形如 http://127.0.0.1:<port>/?token=xxx）。
+   * dsh 的 Web 端每个 /api 与 WebSocket 请求都要先凭该 token 换取会话 cookie，
+   * 因此必须把带 token 的地址交给 webview 加载；未运行时为空串。
+   */
+  url: string
+  /** dsh 的数据目录（$DSH_HOME），存放 profiles / 凭据 / 会话 */
+  home: string
+  /** 失败原因（端口被占用 / 启动超时 / 缺少运行时等），正常时为空串 */
+  error: string
+}
+
 export interface ComfyInfo {
   installed: boolean
   version: string
@@ -343,6 +393,27 @@ export interface LauncherApi {
   // diagnostics
   runDiagnostics(): Promise<DiagItem[]>
   repair(mode: string, pythonPath: string, torchIndex: string): Promise<void>
+  // canvas agent（无限画布伴生服务 + MCP 连接器）
+  /** 伴生服务当前状态 */
+  agentStatus(): Promise<CanvasAgentStatus>
+  /** 伴生服务详情（含 url/token，供画布注入） */
+  agentInfo(): Promise<CanvasAgentInfo>
+  agentStart(): Promise<CanvasAgentInfo>
+  /** 停止/解除关联；复用外部实例时只解除关联，不结束对方的进程 */
+  agentStop(): Promise<CanvasAgentInfo>
+  agentRestart(): Promise<CanvasAgentInfo>
+  /** 生成 MCP 客户端配置（含应用可执行文件与稳定副本入口） */
+  agentMcpConfig(): Promise<CanvasAgentMcpConfig>
+  onAgentStatus(cb: (s: CanvasAgentStatus) => void): () => void
+  // deepseek harness（本地 agent harness；Web UI 在应用内单独标签展示）
+  /** Harness 进程当前状态 */
+  dshStatus(): Promise<DshStatus>
+  /** Harness 详情（含带 token 的 Web UI 地址，供标签页加载） */
+  dshInfo(): Promise<DshInfo>
+  dshStart(): Promise<DshInfo>
+  dshStop(): Promise<DshInfo>
+  dshRestart(): Promise<DshInfo>
+  onDshStatus(cb: (s: DshStatus) => void): () => void
 }
 
 export const IPC = {
@@ -427,5 +498,20 @@ export const IPC = {
   termExit: 'ev:termExit',
   // diagnostics
   diagRun: 'diag:run',
-  diagRepair: 'diag:repair'
+  diagRepair: 'diag:repair',
+  // canvas agent
+  agentStatus: 'agent:status',
+  agentInfo: 'agent:info',
+  agentStart: 'agent:start',
+  agentStop: 'agent:stop',
+  agentRestart: 'agent:restart',
+  agentMcpConfig: 'agent:mcpConfig',
+  evAgentStatus: 'ev:agentStatus',
+  // deepseek harness
+  dshStatus: 'dsh:status',
+  dshInfo: 'dsh:info',
+  dshStart: 'dsh:start',
+  dshStop: 'dsh:stop',
+  dshRestart: 'dsh:restart',
+  evDshStatus: 'ev:dshStatus'
 } as const

@@ -9,6 +9,8 @@ import { setMainLocale, t } from './i18n'
 import { detectGpu } from './gpu'
 import { listPythons } from './python'
 import { comfy } from './process'
+import { canvasAgent, buildMcpConfig } from './agent-process'
+import { dsh } from './dsh-process'
 import { syncThemeToComfy, watchComfyTheme } from './comfy-theme'
 import { installComfyUI, updateComfyUI, listComfyVersions, listTorchIndexes, listTorchVariants, installTorch, checkComfyUpdate } from './installer'
 import { scanModels, deleteModel, moveModel, modelCategories, listModelDir, createModelDir, searchOnlineModels, listOnlineModelFiles } from './models'
@@ -103,10 +105,31 @@ async function probeEnv(): Promise<ProbeResult> {
   return probe
 }
 
+/** 画布伴生服务：仅在开关或端口变化时热启停 / 重启，避免每次自动保存都折腾进程 */
+async function applyAgentSettings(before: Settings, next: Settings): Promise<void> {
+  if (before.canvasAgentEnabled === next.canvasAgentEnabled && before.canvasAgentPort === next.canvasAgentPort) return
+  if (!next.canvasAgentEnabled) {
+    await canvasAgent.stop()
+    return
+  }
+  await canvasAgent.restart()
+}
+
+/** DeepSeek Harness：同样只在开关或端口变化时热启停 / 重启 */
+async function applyDshSettings(before: Settings, next: Settings): Promise<void> {
+  if (before.dshEnabled === next.dshEnabled && before.dshPort === next.dshPort) return
+  if (!next.dshEnabled) {
+    await dsh.stop()
+    return
+  }
+  await dsh.restart()
+}
+
 export function registerIpc(): void {
   // ---- settings & system ----
   ipcMain.handle(IPC.settingsGet, () => loadSettings())
   ipcMain.handle(IPC.settingsSet, (_e, s: Partial<Settings>) => {
+    const before = loadSettings()
     const saved = saveSettings(s)
     const themed = s.theme === 'dark' || s.theme === 'light'
     // 主题/语言变化立即生效：原生 UI 配色、主进程取词（日志/进度文案）随之切换
@@ -116,6 +139,8 @@ export function registerIpc(): void {
     if ((themed || s.syncComfyTheme === true) && saved.syncComfyTheme && saved.theme) {
       void syncThemeToComfy(saved.theme)
     }
+    void applyAgentSettings(before, saved)
+    void applyDshSettings(before, saved)
     return saved
   })
   // 反向联动：在 ComfyUI 界面里改主题 → 跟随切换启动器
@@ -347,6 +372,23 @@ export function registerIpc(): void {
     }
   })
 
+  // ---- canvas agent（无限画布伴生服务 + MCP 连接器）----
+  ipcMain.handle(IPC.agentStatus, () => canvasAgent.status)
+  ipcMain.handle(IPC.agentInfo, () => canvasAgent.getInfo())
+  ipcMain.handle(IPC.agentStart, () => canvasAgent.start())
+  ipcMain.handle(IPC.agentStop, () => canvasAgent.stop())
+  ipcMain.handle(IPC.agentRestart, () => canvasAgent.restart())
+  ipcMain.handle(IPC.agentMcpConfig, () => buildMcpConfig())
+  canvasAgent.on('status', s => send(IPC.evAgentStatus, s))
+
+  // ---- deepseek harness（本地 agent harness + Web UI）----
+  ipcMain.handle(IPC.dshStatus, () => dsh.status)
+  ipcMain.handle(IPC.dshInfo, () => dsh.getInfo())
+  ipcMain.handle(IPC.dshStart, () => dsh.start())
+  ipcMain.handle(IPC.dshStop, () => dsh.stop())
+  ipcMain.handle(IPC.dshRestart, () => dsh.restart())
+  dsh.on('status', s => send(IPC.evDshStatus, s))
+
   // ---- comfy process events ----
   comfy.on('log', line => send(IPC.evLog, line))
   comfy.on('status', s => send(IPC.evStatus, s))
@@ -354,5 +396,7 @@ export function registerIpc(): void {
   app.on('before-quit', () => {
     terminal.disposeAll()
     void comfy.dispose()
+    void canvasAgent.dispose()
+    void dsh.dispose()
   })
 }

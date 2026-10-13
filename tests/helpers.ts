@@ -28,6 +28,8 @@ export function electronMockFactory(userData: () => string, extra: Record<string
         return dir
       },
       isPackaged: false,
+      getAppPath: () => path.join(userData(), 'app'),
+      getVersion: () => '0.0.0-test',
       ...((extra.app as Record<string, unknown>) || {})
     },
     dialog: {

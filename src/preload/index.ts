@@ -104,7 +104,23 @@ const api: import('../shared/api').LauncherApi = {
   // diagnostics
   runDiagnostics: () => ipcRenderer.invoke(IPC.diagRun),
   repair: (mode: string, pythonPath: string, torchIndex: string) =>
-    ipcRenderer.invoke(IPC.diagRepair, mode, pythonPath, torchIndex)
+    ipcRenderer.invoke(IPC.diagRepair, mode, pythonPath, torchIndex),
+
+  // canvas agent
+  agentStatus: () => ipcRenderer.invoke(IPC.agentStatus),
+  agentInfo: () => ipcRenderer.invoke(IPC.agentInfo),
+  agentStart: () => ipcRenderer.invoke(IPC.agentStart),
+  agentStop: () => ipcRenderer.invoke(IPC.agentStop),
+  agentRestart: () => ipcRenderer.invoke(IPC.agentRestart),
+  agentMcpConfig: () => ipcRenderer.invoke(IPC.agentMcpConfig),
+  onAgentStatus: (cb: (s: import('../shared/api').CanvasAgentStatus) => void) => on(IPC.evAgentStatus, cb),
+  // deepseek harness
+  dshStatus: () => ipcRenderer.invoke(IPC.dshStatus),
+  dshInfo: () => ipcRenderer.invoke(IPC.dshInfo),
+  dshStart: () => ipcRenderer.invoke(IPC.dshStart),
+  dshStop: () => ipcRenderer.invoke(IPC.dshStop),
+  dshRestart: () => ipcRenderer.invoke(IPC.dshRestart),
+  onDshStatus: (cb: (s: import('../shared/api').DshStatus) => void) => on(IPC.evDshStatus, cb)
 }
 
 contextBridge.exposeInMainWorld('api', api)

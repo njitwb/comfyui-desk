@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import { api } from './api'
 import { t } from './i18n'
-import type { ComfyInfo, ComfyStatus, LogLine, ProgressEvent, TorchVariant } from '../../shared/api'
+import type { CanvasAgentInfo, ComfyInfo, ComfyStatus, DshInfo, LogLine, ProgressEvent, TorchVariant } from '../../shared/api'
 
 const DEFAULT_MAX_LOGS = 5000
 
@@ -28,7 +28,11 @@ export const store = reactive({
   /** 可选 torch 索引（cu130/cu128/.../cpu），启动时动态拉取 */
   torchIndexes: [] as string[],
   /** 各源下匹配当前 venv Python 的最新 torch 版本 */
-  torchVariants: [] as TorchVariant[]
+  torchVariants: [] as TorchVariant[],
+  /** 画布伴生服务（本地 Agent + MCP 连接器）状态；null = 尚未拉取 */
+  agent: null as CanvasAgentInfo | null,
+  /** DeepSeek Harness 状态；null = 尚未拉取 */
+  dsh: null as DshInfo | null
 })
 
 /** 加载可用的 torch/CUDA 索引列表（只拉一次） */
@@ -77,7 +81,11 @@ export function initStore(): void {
   api.onInstallProgress(e => {
     store.progress = e.percent >= 100 ? null : e
   })
+  api.onAgentStatus(() => void refreshAgent())
+  api.onDshStatus(() => void refreshDsh())
   void refreshInfo()
+  void refreshAgent()
+  void refreshDsh()
   void (async () => {
     store.settings = await api.getSettings()
     store.status = (await api.getStatus()) as ComfyStatus
@@ -96,4 +104,22 @@ export async function refreshInfo(): Promise<void> {
 
 export async function refreshSettings(): Promise<void> {
   store.settings = await api.getSettings()
+}
+
+/** 刷新画布伴生服务信息（状态事件触发，或页面初始化时主动拉取） */
+export async function refreshAgent(): Promise<void> {
+  try {
+    store.agent = (await api.agentInfo()) as CanvasAgentInfo
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 刷新 DeepSeek Harness 信息（状态事件触发，或页面初始化时主动拉取） */
+export async function refreshDsh(): Promise<void> {
+  try {
+    store.dsh = (await api.dshInfo()) as DshInfo
+  } catch {
+    /* ignore */
+  }
 }

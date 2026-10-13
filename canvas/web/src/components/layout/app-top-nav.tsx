@@ -8,7 +8,8 @@ import { AppConfigModal } from "@/components/layout/app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { requestAgentDockToggle } from "@/lib/desk-bridge";
 import { useAgentStore } from "@/stores/use-agent-store";
 
 export function AppTopNav() {
@@ -22,6 +23,12 @@ export function AppTopNav() {
     const connectAgent = useAgentStore((state) => state.connectAgent);
     const togglePanel = useAgentStore((state) => state.togglePanel);
     const panelOpen = useAgentStore((state) => state.panelOpen);
+    // 桌面宿主存在时，agent 界面由宿主右侧的 Harness（dsh）dock 承载
+    const agentDockOpen = useAgentStore((state) => state.agentDockOpen);
+    const agentOpen = agentDockOpen || panelOpen;
+    const toggleAgent = useCallback(() => {
+        if (!requestAgentDockToggle()) togglePanel();
+    }, [togglePanel]);
     const hideHeader = /^\/canvas\/[^/]+/.test(pathname);
     const slug = pathname.split("/").filter(Boolean)[0];
     const activeToolSlug = navigationTools.some((tool) => tool.slug === slug) ? (slug as NavigationToolSlug) : undefined;
@@ -83,8 +90,8 @@ export function AppTopNav() {
                         </div>
 
                         <div className="my-auto flex h-9 min-w-0 items-center justify-end gap-2 justify-self-end whitespace-nowrap">
-                            <Tooltip title={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}>
-                                <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" icon={<Bot className="size-4" />} onClick={togglePanel} aria-label={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")} />
+                            <Tooltip title={t(agentOpen ? "topNav.closeAgent" : "topNav.openAgent")}>
+                                <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" icon={<Bot className="size-4" />} onClick={toggleAgent} aria-label={t(agentOpen ? "topNav.closeAgent" : "topNav.openAgent")} />
                             </Tooltip>
                             <UserStatusActions />
                         </div>

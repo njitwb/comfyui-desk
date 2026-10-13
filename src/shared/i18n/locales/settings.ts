@@ -217,5 +217,25 @@ export default {
   'settings.env.torchIndex.auto': ['自动推荐', 'Auto-recommended'],
   'settings.env.python': ['Python 解释器（重建 / 修复环境时使用，留空自动选择）', 'Python interpreter (used when rebuilding or repairing the environment; leave empty to auto-select)'],
   'settings.env.logMaxLines': ['运行日志最大行数', 'Max log lines'],
-  'settings.env.logMaxLines.hint': ['日志界面最多保留的行数，超出后自动丢弃最早的行（默认 5000，行数越大越占内存）', 'Max lines kept in the logs view; older lines are dropped beyond this (default 5000; larger values use more memory)']
+  'settings.env.logMaxLines.hint': ['日志界面最多保留的行数，超出后自动丢弃最早的行（默认 5000，行数越大越占内存）', 'Max lines kept in the logs view; older lines are dropped beyond this (default 5000; larger values use more memory)'],
+
+  /** 画布伴生服务卡片 */
+  'settings.agent.title': ['画布伴生服务', 'Canvas companion service'],
+  'settings.agent.sub': [
+    '为「无限画布」提供本地 Agent 与 MCP 连接器，让 DeepSeek Harness 等 MCP 客户端能实时操作画布',
+    'Provides a local agent and MCP connector for Infinite Canvas, letting MCP clients such as DeepSeek Harness operate the canvas in real time'
+  ],
+  'settings.agent.enable': ['随应用自动启动', 'Start automatically with the app'],
+  'settings.agent.port': ['监听端口', 'Port'],
+  'settings.agent.status': ['状态', 'Status'],
+  'settings.agent.status.running': ['运行中', 'Running'],
+  'settings.agent.status.starting': ['启动中…', 'Starting…'],
+  'settings.agent.status.stopped': ['已停止', 'Stopped'],
+  'settings.agent.status.error': ['异常', 'Error'],
+  'settings.agent.mode.external': ['复用已有实例', 'Reusing existing instance'],
+  'settings.agent.restart': ['重启', 'Restart'],
+  'settings.agent.mcp': ['复制 MCP 配置', 'Copy MCP config'],
+  'settings.agent.mcp.copied': ['MCP 配置已复制到剪贴板', 'MCP config copied to the clipboard'],
+  'settings.agent.mcp.hint': ['粘贴到任意 MCP 客户端（Claude Code / Codex 等）的配置文件即可连接本机画布', 'Paste it into any MCP client (Claude Code, Codex, etc.) config to connect to the local canvas'],
+  'settings.agent.harnessNote': ['画布内对话由 DeepSeek Harness 提供，与「Harness」标签共用同一会话；Harness 未运行时画布内的 agent 不可用', 'In-canvas chat is provided by DeepSeek Harness and shares the same session as the "Harness" tab; the in-canvas agent is unavailable while Harness is not running']
 } as const satisfies MessageTable

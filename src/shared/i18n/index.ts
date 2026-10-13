@@ -11,6 +11,7 @@ import store from './locales/store'
 import dashboard from './locales/dashboard'
 import workbench from './locales/workbench'
 import canvas from './locales/canvas'
+import harness from './locales/harness'
 import install from './locales/install'
 import logs from './locales/logs'
 import terminal from './locales/terminal'
@@ -29,6 +30,7 @@ import mainNodes from './locales/main-nodes'
 import mainTerminal from './locales/main-terminal'
 import mainMisc from './locales/main-misc'
 import mainUpdater from './locales/main-updater'
+import mainAgent from './locales/main-agent'
 
 export const MESSAGES = {
   ...common,
@@ -38,6 +40,7 @@ export const MESSAGES = {
   ...dashboard,
   ...workbench,
   ...canvas,
+  ...harness,
   ...install,
   ...logs,
   ...terminal,
@@ -55,7 +58,8 @@ export const MESSAGES = {
   ...mainNodes,
   ...mainTerminal,
   ...mainMisc,
-  ...mainUpdater
+  ...mainUpdater,
+  ...mainAgent
 }
 
 export type MessageKey = keyof typeof MESSAGES

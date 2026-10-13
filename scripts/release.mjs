@@ -35,8 +35,13 @@ if (bump) {
 
 run('node scripts/prepare-python.mjs')
 run('node scripts/prepare-git.mjs')
+// 便携 Node 22：dsh 要求 Node ^22.19，Electron 自带的 20.18.3 跑不了
+run('node scripts/prepare-node.mjs')
+run('node scripts/prepare-pnpm.mjs')
 run('npm run typecheck')
 run('npm run build:canvas')
+run('npm run build:agent')
+run('npm run build:dsh')
 run('npm run build')
 
 // electron 解压后立刻重命名目录时,Defender 实时扫描可能持有句柄导致 EPERM;

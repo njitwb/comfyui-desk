@@ -3,9 +3,11 @@ import path from 'node:path'
 import { registerIpc, broadcastRenderer } from './ipc'
 import { IPC } from '../shared/api'
 import { comfy } from './process'
+import { canvasAgent } from './agent-process'
+import { dsh } from './dsh-process'
 import { installGuestGuards } from './guest-guard'
 import { registerCanvasServer } from './canvas-server'
-import { resolveAppearance, saveSettings } from './settings'
+import { resolveAppearance, saveSettings, loadSettings } from './settings'
 import { reconcileTheme } from './comfy-theme'
 import { setMainLocale, t } from './i18n'
 import type { Theme } from '../shared/appearance'
@@ -53,6 +55,11 @@ if (!gotLock) {
     registerCanvasServer()
     registerIpc()
     createWindow(currentTheme)
+
+    // 画布伴生服务：与窗口创建并发，不阻塞界面（未启用时跳过）
+    if (loadSettings().canvasAgentEnabled) void canvasAgent.start()
+    // DeepSeek Harness：同理由应用托管，首次启动要初始化 profile，不阻塞界面
+    if (loadSettings().dshEnabled) void dsh.start()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow(currentTheme)

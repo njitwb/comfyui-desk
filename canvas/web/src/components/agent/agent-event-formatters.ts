@@ -4,7 +4,7 @@ import { summarizeCanvasAgentOps, type CanvasAgentOp } from "@/lib/canvas/canvas
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { randomId } from "@/lib/utils";
 import { resolveAgentMessageAssetUrl } from "@/services/api/canvas-agent";
-import { useAgentStore, type AgentAttachment, type AgentChatItem, type AgentEventLog, type AgentMessageAttachment, type AgentTokenUsage } from "@/stores/use-agent-store";
+import { agentDisplayName, useAgentStore, type AgentAttachment, type AgentChatItem, type AgentEventLog, type AgentMessageAttachment, type AgentTokenUsage } from "@/stores/use-agent-store";
 import type { AgentChatAttachment } from "./agent-chat-message";
 export const REASONING_PLACEHOLDER = i18n.t("agent.events.analyzing");
 
@@ -67,7 +67,7 @@ export function agentAttachmentToChatAttachment(item: AgentMessageAttachment, en
 
 export function formatAgentEvent(event: AgentEventPayload): Omit<AgentChatItem, "id"> | null {
     const item = event.item;
-    if (event.type === "item.completed" && item?.type === "agent_message") return { role: "assistant", title: "WorkBuddy", text: stringText(item.text) };
+    if (event.type === "item.completed" && item?.type === "agent_message") return { role: "assistant", title: agentDisplayName(), text: stringText(item.text) };
     return null;
 }
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * 一键发布（Linux / deepin 等 Debian 系）：类型检查 → vite 构建 → electron-builder 打包 AppImage
- * 与 Windows 的 release.mjs 不同：POSIX 使用系统 Python / git，无需 prepare-python / prepare-git。
+ * 与 Windows 的 release.mjs 不同：POSIX 使用系统 Python / git，无需 prepare-python / prepare-git；
+ * 但便携 Node 22 运行时两个平台都需要（dsh 要求 Node ^22.19，Electron 自带的跑不了）。
  * 用法:
  *   npm run release:linux               按 package.json 当前版本号打包
  *   npm run release:linux -- 1.2.3      先将版本号提升到 1.2.3 再打包
@@ -46,8 +47,12 @@ if (bump) {
   run(`npm version ${bump} --no-git-tag-version`)
 }
 
+run('node scripts/prepare-node.mjs')
+run('node scripts/prepare-pnpm.mjs')
 run('npm run typecheck')
 run('npm run build:canvas')
+run('npm run build:agent')
+run('npm run build:dsh')
 run('npm run build')
 
 try {

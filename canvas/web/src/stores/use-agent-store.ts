@@ -37,8 +37,23 @@ export type AgentConversationState = {
     sourceClientId?: string;
     error?: string;
 };
-export type AgentPanelTab = "chat" | "setup" | "history" | "skills" | "log";
-export type AgentProvider = "workbuddy" | "codex";
+export type AgentPanelTab = "chat" | "setup" | "history" | "log";
+
+/**
+ * 画布内 agent 的路由前缀。
+ *
+ * 画布内只有唯一后端：DeepSeek Harness（dsh）。canvas-agent 的 harness 后端
+ * 刻意复用了既有的路由形状（models/threads/turn/interrupt…），见 canvas/agent 的
+ * /agent/harness/* 路由。
+ */
+export function currentAgentPrefix(): "/agent/harness" {
+    return "/agent/harness";
+}
+
+/** 后端的展示名。画布文案历史上把品牌名写死，凡是给用户看的后端名都应走这里。 */
+export function agentDisplayName(): string {
+    return "DeepSeek Harness";
+}
 
 const CONNECT_TIMEOUT_MS = 6000;
 let agentSource: EventSource | null = null;
@@ -49,6 +64,8 @@ type AgentStore = {
     panelOpen: boolean;
     panelMounted: boolean;
     panelClosing: boolean;
+    /** 桌面宿主右侧 Harness（dsh）dock 是否展开；纯浏览器运行时恒为 false */
+    agentDockOpen: boolean;
     canvasContext: AgentCanvasContext | null;
     url: string;
     token: string;
@@ -82,16 +99,14 @@ type AgentStore = {
     connectError: string;
     pendingTool: AgentPendingToolCall | null;
     pendingApprovals: AgentPendingApproval[];
-    agentProvider: AgentProvider;
-    workbuddyOnline: boolean;
-    workbuddyConfigured: boolean;
-    setAgentState: (patch: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext">>) => void;
+    setAgentState: (patch: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext" | "setAgentDockOpen">>) => void;
     openPanel: () => void;
     closePanel: () => void;
     togglePanel: () => void;
     setCanvasContext: (context: AgentCanvasContext | null) => void;
+    setAgentDockOpen: (open: boolean) => void;
     connectAgent: (options?: { silent?: boolean }) => void;
-    disconnectAgent: (patch?: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext">>) => void;
+    disconnectAgent: (patch?: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext" | "setAgentDockOpen">>) => void;
     addMessage: (item: AgentChatItem) => void;
     addEventLog: (item: AgentEventLog) => void;
     clearEventLogs: () => void;
@@ -104,6 +119,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     panelOpen: false,
     panelMounted: true,
     panelClosing: false,
+    agentDockOpen: false,
     canvasContext: null,
     url: typeof window === "undefined" ? "http://127.0.0.1:17371" : localStorage.getItem("canvas-agent-url") || "http://127.0.0.1:17371",
     token: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-token") || "",
@@ -137,9 +153,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     connectError: "",
     pendingTool: null,
     pendingApprovals: [],
-    agentProvider: "workbuddy",
-    workbuddyOnline: false,
-    workbuddyConfigured: false,
     setAgentState: (patch) => set(patch),
     openPanel: () => set({ panelOpen: true, panelMounted: true, panelClosing: false }),
     closePanel: () => {
@@ -151,6 +164,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     },
     togglePanel: () => (get().panelOpen ? get().closePanel() : get().openPanel()),
     setCanvasContext: (canvasContext) => set({ canvasContext }),
+    setAgentDockOpen: (agentDockOpen) => set({ agentDockOpen }),
     connectAgent: (options) => {
         const silent = options?.silent ?? false;
         const endpoint = get().url.trim().replace(/\/$/, "");

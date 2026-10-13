@@ -11,6 +11,55 @@ files:
   # 内嵌画布 webview 的预加载桥（app.getAppPath() 下按 file:// 加载）
   - resources/canvas-preload.cjs
 
+# 内嵌画布的伴生服务（vendored canvas-agent）必须以「真实文件」分发，不能进 asar：
+#   1) 子进程需要真实路径才能被 spawn（asar 内的文件不能可靠地作为脚本入口）
+#   2) dist/ 必须与 agent-instructions.md、package.json（"type":"module"）、node_modules/
+#      同处一个真实目录（config.js 顶层相对路径依赖，见 scripts/build-agent.mjs 断言）
+# 顶层与 win 段的 extraResources 是叠加关系（app-builder-lib 两次 addPatterns），
+# 故此处不影响 win 段的便携 python/git。
+# node_modules 必须单独一条 matcher 拷贝：app-builder-lib 的 copyDir 过滤器在
+# util/filter.js 里硬编码 `if (relative === "node_modules") return false`，会无条件
+# 剔除「from 根目录下的 node_modules」，与 filter 写法无关。拆成独立 matcher 后，
+# from 即 node_modules 自身，不再是根目录下的条目，才能被完整复制。
+extraResources:
+  - from: canvas/agent
+    to: canvas-agent
+    filter:
+      - "**/*"
+      - "!src/**"
+      - "!tsconfig.json"
+      - "!package-lock.json"
+      - "!PATCHES.md"
+      - "!README.md"
+  - from: canvas/agent/node_modules
+    to: canvas-agent/node_modules
+    filter:
+      - "**/*"
+
+# 便携 Node 22 运行时：DeepSeek Harness（dsh）要求 Node ^22.19 || >=24，
+# 而 Electron 33 自带的是 Node 20.18.3（用 ELECTRON_RUN_AS_NODE 跑 dsh 会静默退出）。
+# 只放可执行文件，不带 npm/pnpm，见 scripts/prepare-node.mjs。
+  - from: resources/node-runtime
+    to: node-runtime
+
+# pnpm：dsh 的插件管理（插件市场靠它执行 pnpm add 装插件）依赖它，
+# 随包 Node 运行时不含 npm/pnpm，故单独分发。见 scripts/prepare-pnpm.mjs。
+  - from: resources/pnpm
+    to: pnpm
+
+# DeepSeek Harness（dsh）依赖树，由上面的 Node 运行时启动（scripts/build-dsh.mjs 安装）。
+# 与 canvas-agent 同理：node_modules 必须单独一条 matcher —— app-builder-lib 的
+# copyDir 过滤器硬编码剔除「from 根目录下的 node_modules」。
+  - from: canvas/dsh
+    to: dsh
+    filter:
+      - "**/*"
+      - "!package-lock.json"
+  - from: canvas/dsh/node_modules
+    to: dsh/node_modules
+    filter:
+      - "**/*"
+
 # 便携 Python / git 仅随 Windows 包分发（路径与 bundledPython()/gitDir() 探测一致）；
 # POSIX 平台（Linux/macOS）使用系统 Python 与 git，随包不内置
 win:

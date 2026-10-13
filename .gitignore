@@ -2,10 +2,19 @@ node_modules
 dist
 dist-types
 *.log
-resources
+resources/*
+# 内嵌画布 webview 的预加载桥：手写源码 + 运行时按真实路径加载，必须入库
+!resources/canvas-preload.cjs
 release
 .trae
 
 # 内嵌无限画布（vendored）：依赖与构建产物不入库
 canvas/web/node_modules
 canvas/web/dist
+
+# 内嵌画布伴生服务（vendored canvas-agent）：依赖与构建产物不入库
+canvas/agent/node_modules
+canvas/agent/dist
+
+# 内嵌 DeepSeek Harness（vendored dsh 依赖树）：解包约 440MB，不入库
+canvas/dsh/node_modules

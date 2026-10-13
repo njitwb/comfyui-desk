@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import type { CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
-import type { AgentReasoningEffort } from "@/stores/use-agent-store";
+import { currentAgentPrefix } from "@/stores/use-agent-store";
 
 type AgentConfigResponse = { ok?: boolean; protocolVersion?: number; url?: string; token?: string; hasToken?: boolean };
 const AGENT_MESSAGE_ASSET_PATTERN = /^agent-asset:([a-f0-9]{64})\/([a-f0-9]{64}\.(?:gif|jpe?g|png|webp))$/;
@@ -25,21 +25,7 @@ export type AgentSkillSummary = {
     enabled: boolean;
     managed: boolean;
 };
-export type AgentSkillDetail = {
-    name: string;
-    description: string;
-    instructions: string;
-    interface?: AgentSkillInterface | null;
-    path: string;
-    managed: true;
-    revision: string;
-};
-export type AgentSkillInput = { name?: string; description: string; instructions: string; interface?: AgentSkillInterface | null; expectedRevision?: string };
-export type AgentSkillDraft = { name: string; displayName: string; description: string; instructions: string; shortDescription: string; defaultPrompt: string };
-export type AgentSkillDraftInput = { source: "conversation" | "canvas"; threadId: string; clientId: string; model?: string; effort?: AgentReasoningEffort };
 export type AgentSkillsResponse = { ok?: boolean; data?: AgentSkillSummary[]; errors?: unknown[] };
-export type AgentSkillResponse = { ok?: boolean; data?: AgentSkillDetail };
-export type AgentSkillDraftResponse = { ok?: boolean; data?: AgentSkillDraft };
 
 export async function postState(endpoint: string, token: string, clientId: string, snapshot: CanvasAgentSnapshot | null) {
     try {
@@ -65,15 +51,15 @@ export async function postToolResult(endpoint: string, token: string, clientId: 
 }
 
 export async function postCodexApproval(endpoint: string, token: string, requestId: string, decision: "accept" | "acceptForSession" | "decline") {
-    await fetchAgentJson(endpoint, token, "/agent/codex/approval", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId, decision }) });
+    await fetchAgentJson(endpoint, token, `${currentAgentPrefix()}/approval`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId, decision }) });
 }
 
 export async function interruptCodexTurn(endpoint: string, token: string, threadId?: string) {
-    await fetchAgentJson(endpoint, token, "/agent/codex/interrupt", jsonPost({ threadId }));
+    await fetchAgentJson(endpoint, token, `${currentAgentPrefix()}/interrupt`, jsonPost({ threadId }));
 }
 
 export async function acknowledgeCodexHistory(endpoint: string, token: string, threadId: string, turnIds: string[]) {
-    await fetchAgentJson(endpoint, token, "/agent/codex/history/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId, turnIds }) });
+    await fetchAgentJson(endpoint, token, `${currentAgentPrefix()}/history/ack`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId, turnIds }) });
 }
 
 export async function revealAgentLocalFile(endpoint: string, token: string, path: string) {
@@ -88,31 +74,7 @@ export function resolveAgentMessageAssetUrl(endpoint: string, token: string, val
 }
 
 export function fetchCodexSkills(endpoint: string, token: string, forceReload = false) {
-    return fetchAgentJson<AgentSkillsResponse>(endpoint, token, `/agent/codex/skills${forceReload ? "?forceReload=1" : ""}`);
-}
-
-export function fetchCodexSkill(endpoint: string, token: string, name: string) {
-    return fetchAgentJson<AgentSkillResponse>(endpoint, token, `/agent/codex/skills/${encodeURIComponent(name)}`);
-}
-
-export function createCodexSkill(endpoint: string, token: string, input: AgentSkillInput) {
-    return fetchAgentJson<AgentSkillResponse>(endpoint, token, "/agent/codex/skills", jsonPost(input));
-}
-
-export function createCodexSkillDraft(endpoint: string, token: string, input: AgentSkillDraftInput) {
-    return fetchAgentJson<AgentSkillDraftResponse>(endpoint, token, "/agent/codex/skills/draft", jsonPost(input));
-}
-
-export function updateCodexSkill(endpoint: string, token: string, name: string, input: AgentSkillInput) {
-    return fetchAgentJson<AgentSkillResponse>(endpoint, token, `/agent/codex/skills/${encodeURIComponent(name)}`, jsonPost(input));
-}
-
-export function deleteCodexSkill(endpoint: string, token: string, name: string, expectedRevision: string) {
-    return fetchAgentJson<{ ok?: boolean }>(endpoint, token, `/agent/codex/skills/${encodeURIComponent(name)}/delete`, jsonPost({ expectedRevision }));
-}
-
-export function setCodexSkillEnabled(endpoint: string, token: string, skill: Pick<AgentSkillSummary, "name" | "path">, enabled: boolean) {
-    return fetchAgentJson<{ ok?: boolean }>(endpoint, token, `/agent/codex/skills/${encodeURIComponent(skill.name)}/enabled`, jsonPost({ ...skill, enabled }));
+    return fetchAgentJson<AgentSkillsResponse>(endpoint, token, `${currentAgentPrefix()}/skills${forceReload ? "?forceReload=1" : ""}`);
 }
 
 export async function fetchAgentJson<T>(endpoint: string, token: string, path: string, init?: RequestInit) {
@@ -132,29 +94,6 @@ export async function discoverAgentConfig(endpoint: string) {
     } catch {
         return null;
     }
-}
-
-export type WorkbuddyConfigResponse = { ok?: boolean; hasToken?: boolean; baseUrl?: string };
-export type WorkbuddyStatusResponse = { ok?: boolean; online?: boolean; error?: string };
-
-export function fetchWorkbuddyConfig(endpoint: string, token: string) {
-    return fetchAgentJson<WorkbuddyConfigResponse>(endpoint, token, "/agent/workbuddy/config");
-}
-
-export function saveWorkbuddyConfig(endpoint: string, token: string, config: { accessToken?: string; baseUrl?: string }) {
-    return fetchAgentJson<WorkbuddyConfigResponse>(endpoint, token, "/agent/workbuddy/config", jsonPost(config));
-}
-
-export function fetchWorkbuddyStatus(endpoint: string, token: string) {
-    return fetchAgentJson<WorkbuddyStatusResponse>(endpoint, token, "/agent/workbuddy/status");
-}
-
-export function runWorkbuddyTurn(endpoint: string, token: string, body: { prompt: string; threadId?: string; clientId?: string }) {
-    return fetchAgentJson<{ ok?: boolean }>(endpoint, token, "/agent/workbuddy/turn", jsonPost(body));
-}
-
-export function replyWorkbuddyPermission(endpoint: string, token: string, body: { requestId: string; answers: Record<string, unknown> }) {
-    return fetchAgentJson<{ ok?: boolean }>(endpoint, token, "/agent/workbuddy/permission", jsonPost(body));
 }
 
 function jsonPost(body: unknown): RequestInit {

@@ -16,6 +16,10 @@ beforeEach(async () => {
     onStatus: vi.fn(() => () => {}),
     onLog: vi.fn(() => () => {}),
     onInstallProgress: vi.fn(() => () => {}),
+    agentInfo: vi.fn(async () => ({ status: 'stopped', mode: null, port: 17371, url: '', token: '', protocolVersion: 0, error: '' })),
+    onAgentStatus: vi.fn(() => () => {}),
+    dshInfo: vi.fn(async () => ({ status: 'stopped', port: 17372, url: '', home: '/tmp/dsh-home', error: '' })),
+    onDshStatus: vi.fn(() => () => {}),
     torchIndexes: vi.fn(async () => ['cu128', 'cu124', 'cpu']),
     torchVariants: vi.fn(async () => [
       { index: 'cu128', torch: '2.9.0+cu128' },

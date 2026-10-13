@@ -7,5 +7,10 @@ export default {
   'cv.crashed': ['画布进程异常，正在自动恢复…', 'Canvas process crashed, recovering automatically…'],
   'cv.reloadRebuild': ['画布重载异常，强制重建', 'Canvas reload failed, forcing rebuild'],
   'cv.loadFailed': ['无限画布加载失败：{msg}', 'Failed to load the canvas: {msg}'],
-  'cv.loadFailedUnknown': ['未知错误', 'Unknown error']
+  'cv.loadFailedUnknown': ['未知错误', 'Unknown error'],
+  'cv.agent.connected': ['画布 Agent 已连接', 'Canvas Agent connected'],
+  'cv.agent.starting': ['画布 Agent 启动中…', 'Canvas Agent starting…'],
+  'cv.agent.off': ['画布 Agent 未运行', 'Canvas Agent not running'],
+  'cv.agent.error': ['画布 Agent 异常', 'Canvas Agent error'],
+  'cv.agent.dockCollapse': ['收起', 'Collapse']
 } as const satisfies MessageTable

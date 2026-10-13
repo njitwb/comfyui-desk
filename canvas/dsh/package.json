@@ -1,0 +1,13 @@
+{
+  "name": "comfyui-desk-dsh",
+  "private": true,
+  "version": "0.0.0",
+  "description": "随 comfyui-desk 分发的 DeepSeek Harness（dsh）运行时依赖",
+  "comments": {
+    "why": "dsh 是 developer preview 且明确声明会有破坏性变更，尤其是本仓库依赖的 Web 侧 /api（Typert Remote）属内部协议，因此这里精确 pin 版本，不用 ^ 或 ~。升级时必须同步验证 scripts/build-dsh.mjs 的断言与 canvas-agent 的 harness 后端。",
+    "version": "与 resources 分发的 Node 22 运行时配套：dsh 要求 Node ^22.19 || >=24，见 scripts/prepare-node.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.0-rc.2"
+  }
+}

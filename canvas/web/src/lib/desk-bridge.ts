@@ -1,5 +1,6 @@
 import i18n from "@/i18n";
 import { changeAppLocale, type AppLocale } from "@/i18n";
+import { useAgentStore } from "@/stores/use-agent-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 /**
@@ -15,11 +16,18 @@ export interface DeskAppearance {
     locale: "zh" | "en";
 }
 
+/** 桌面管家右侧 Harness（dsh）对话 dock 的开关状态 */
+export interface DeskAgentDock {
+    open: boolean;
+}
+
 declare global {
     interface Window {
         comfyuiDeskBridge?: {
             onAppearance: (cb: (data: DeskAppearance) => void) => void;
             sendAppearance: (data: DeskAppearance) => void;
+            toggleAgentDock?: () => void;
+            onAgentDock?: (cb: (data: DeskAgentDock) => void) => void;
         };
     }
 }
@@ -40,4 +48,22 @@ export function notifyDeskAppearance(overrides?: { theme?: "light" | "dark"; loc
     const theme = overrides?.theme ?? useThemeStore.getState().theme;
     const locale = (overrides?.locale ?? (i18n.resolvedLanguage as AppLocale)) === "en-US" ? "en" : "zh";
     window.comfyuiDeskBridge?.sendAppearance({ theme, locale });
+}
+
+/**
+ * 画布内的 Agent 按钮请求开关对话面板。
+ *
+ * 运行在桌面管家里时，agent 界面由宿主右侧的 Harness（dsh）dock 承载，这里把开关交给宿主并返回 true，
+ * 画布自身不再弹出内置面板；脱离宿主（纯浏览器）时返回 false，调用方回退到内置面板。
+ */
+export function requestAgentDockToggle(): boolean {
+    const bridge = window.comfyuiDeskBridge;
+    if (!bridge?.toggleAgentDock) return false;
+    bridge.toggleAgentDock();
+    return true;
+}
+
+/** 订阅宿主 dock 的开关状态，写入 agent store（供工具栏/顶栏的 Agent 按钮高亮） */
+export function bindDeskAgentDock(): void {
+    window.comfyuiDeskBridge?.onAgentDock?.(({ open }) => useAgentStore.getState().setAgentDockOpen(Boolean(open)));
 }
