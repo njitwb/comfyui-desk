@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { App, Modal, Segmented, Tooltip } from "antd";
-import { CheckSquare, Download, Ellipsis, Eye, FolderPlus, Image as ImageIcon, Info, Maximize2, MessageSquare, Minus, Music2, Plus, RefreshCw, Settings2, SmilePlus, Trash2, Ungroup, Upload, Video } from "lucide-react";
+import { CheckSquare, Download, Ellipsis, Eye, FolderPlus, Image as ImageIcon, Info, Layers, Maximize2, MessageSquare, Minus, Music, Music2, Plus, RefreshCw, Settings2, SmilePlus, Trash2, Ungroup, Upload, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -12,7 +12,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/types/canvas-plugin";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
-import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, readImageQuickToolsConfig, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
+import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
 
 type CanvasNodeHoverToolbarProps = {
     node: CanvasNodeData | null;
@@ -36,6 +36,8 @@ type CanvasNodeHoverToolbarProps = {
     onViewImage: (node: CanvasNodeData) => void;
     onReversePrompt: (node: CanvasNodeData) => void;
     onFaceRefine?: (node: CanvasNodeData) => void;
+    onDepthVideo?: (node: CanvasNodeData) => void;
+    onSeparateAudio?: (node: CanvasNodeData) => void;
     onRetry: (node: CanvasNodeData) => void;
     onToggleFreeResize: (node: CanvasNodeData) => void;
     onDelete: (node: CanvasNodeData) => void;
@@ -78,6 +80,8 @@ export function CanvasNodeHoverToolbar({
     onViewImage,
     onReversePrompt,
     onFaceRefine,
+    onDepthVideo,
+    onSeparateAudio,
     onRetry,
     onToggleFreeResize,
     onDelete,
@@ -91,7 +95,7 @@ export function CanvasNodeHoverToolbar({
     const updateToolbarConfig = useConfigStore((state) => state.updateToolbarConfig);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
 
-    const quickImageToolIds = (configToolbar.ids as ImageQuickToolId[]) || defaultImageQuickToolIds;
+    const quickImageToolIds = Array.isArray(configToolbar?.ids) ? (configToolbar.ids as ImageQuickToolId[]) : defaultImageQuickToolIds;
     const showImageToolLabels = configToolbar.showLabels ?? false;
 
     const [draftImageToolIds, setDraftImageToolIds] = useState<ImageQuickToolId[]>(quickImageToolIds);
@@ -103,17 +107,11 @@ export function CanvasNodeHoverToolbar({
 
     useEffect(() => {
         try {
-            const stored = window.localStorage.getItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
-            if (!stored) return;
-            const parsed = JSON.parse(stored) as unknown;
-            const config = readImageQuickToolsConfig(parsed);
-            if (!configToolbar?.ids || configToolbar.ids.length === 0) {
-                updateToolbarConfig({ ids: config.ids, showLabels: config.showLabels });
-            }
-        } catch {
             window.localStorage.removeItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
+        } catch {
+            // ignore
         }
-    }, [configToolbar?.ids, updateToolbarConfig]);
+    }, []);
 
     useEffect(() => {
         setImageToolSettingsOpen(false);
@@ -122,8 +120,17 @@ export function CanvasNodeHoverToolbar({
     if (!node) return null;
 
     const activeNode = node;
+    const nodeTopScreen = viewport.y + node.position.y * viewport.k;
+    const nodeBottomScreen = viewport.y + (node.position.y + node.height) * viewport.k;
     const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
-    const top = viewport.y + node.position.y * viewport.k - 14;
+
+    // 为节点顶部标题预留清晰的安全纵向空间，避免工具栏与标题重叠
+    const titleGap = Math.max(28 * viewport.k, 24) + 8;
+    const toolbarHeight = 48;
+    const safeTopMargin = 60;
+    const isTopOverflow = nodeTopScreen - titleGap - toolbarHeight < safeTopMargin;
+    const placement: "top" | "bottom" = isTopOverflow ? "bottom" : "top";
+    const top = isTopOverflow ? nodeBottomScreen + 16 : nodeTopScreen - titleGap;
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
     const isAudio = node.type === CanvasNodeType.Audio;
@@ -203,7 +210,9 @@ export function CanvasNodeHoverToolbar({
             : []),
         ...(hasImage || hasVideo || hasAudio || isText ? [{ id: "saveAsset", title: t("common.addToAssets"), label: t("canvas.nodeToolbar.saveAsset"), icon: <FolderPlus className="size-4" />, onClick: () => onSaveAsset(node) }] : []),
         ...(hasImage || hasVideo || hasAudio ? [{ id: "download", title: t(hasAudio ? "canvas.nodeToolbar.downloadAudio" : hasVideo ? "canvas.nodeToolbar.downloadVideo" : "canvas.nodeToolbar.downloadImage"), label: t("common.download"), icon: <Download className="size-4" />, onClick: () => onDownload(node) }] : []),
+        ...(hasVideo ? [{ id: "separateAudio", title: t("canvas.nodeToolbar.separateAudio"), label: t("canvas.nodeToolbar.separateAudio"), icon: <Music className="size-4" />, onClick: () => onSeparateAudio?.(node) }] : []),
         ...(hasVideo ? [{ id: "faceRefine", title: "人脸修复", label: "人脸修复", icon: <SmilePlus className="size-4" />, onClick: () => onFaceRefine?.(node) }] : []),
+        ...(hasVideo ? [{ id: "depthVideo", title: t("canvas.nodeToolbar.depthVideo"), label: t("canvas.nodeToolbar.depthVideo"), icon: <Layers className="size-4" />, onClick: () => onDepthVideo?.(node) }] : []),
         ...(hasVideo ? [{ id: "viewVideo", title: t("canvas.nodeToolbar.viewVideo"), label: t("canvas.nodeToolbar.viewVideo"), icon: <Eye className="size-4" />, onClick: () => onViewImage(node) }] : []),
         ...(isVideo || isAudio ? [{ id: "edit", title: t("common.edit"), label: t("common.edit"), icon: <MessageSquare className="size-4" />, onClick: () => onToggleDialog(node) }] : []),
         ...(isText && node.metadata?.status !== "loading" ? [{ id: "generateImage", title: t("canvas.node.generateImage"), label: t("canvas.node.generate"), icon: <ImageIcon className="size-4" />, onClick: () => onGenerateImage(node) }] : []),
@@ -234,14 +243,20 @@ export function CanvasNodeHoverToolbar({
 
     const saveImageToolSettings = () => {
         updateToolbarConfig({ ids: draftImageToolIds, showLabels: draftShowImageToolLabels });
-        window.localStorage.setItem(IMAGE_QUICK_TOOLS_STORAGE_KEY, JSON.stringify({ ids: draftImageToolIds, showLabels: draftShowImageToolLabels }));
+        try {
+            window.localStorage.removeItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
+        } catch {
+            // ignore
+        }
         closeImageToolSettings();
     };
 
     return (
         <>
             <div
-                className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+                className={`absolute z-[70] flex h-12 -translate-x-1/2 items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)] transition-transform duration-150 ${
+                    placement === "top" ? "-translate-y-full" : "translate-y-0"
+                }`}
                 style={{ left, top }}
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
@@ -251,9 +266,9 @@ export function CanvasNodeHoverToolbar({
                 onPointerDown={(event) => event.stopPropagation()}
             >
                 {toolbarTools.map((tool) => (
-                    <ToolbarAction key={tool.id} {...tool} showLabel={isImage ? showImageToolLabels : true} />
+                    <ToolbarAction key={tool.id} {...tool} placement={placement} showLabel={isImage ? showImageToolLabels : true} />
                 ))}
-                {hasImage ? <ToolbarAction id="more" title={t("canvas.imageTools.configure")} label={t("canvas.imageTools.more")} icon={<Ellipsis className="size-4" />} active={imageToolSettingsOpen} onClick={openImageToolSettings} showLabel={showImageToolLabels} /> : null}
+                {hasImage ? <ToolbarAction id="more" title={t("canvas.imageTools.configure")} label={t("canvas.imageTools.more")} icon={<Ellipsis className="size-4" />} placement={placement} active={imageToolSettingsOpen} onClick={openImageToolSettings} showLabel={showImageToolLabels} /> : null}
             </div>
             {hasImage ? (
                 <ImageToolSettingsModal
@@ -346,10 +361,25 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
     );
 }
 
-function ToolbarAction({ title, label, icon, onClick, showLabel, active = false, danger = false }: ToolbarTool & { showLabel: boolean }) {
+function ToolbarAction({
+    title,
+    label,
+    icon,
+    onClick,
+    showLabel,
+    placement = "top",
+    active = false,
+    danger = false,
+}: ToolbarTool & { showLabel: boolean; placement?: "top" | "bottom" }) {
     const hasText = showLabel && Boolean(label);
     return (
-        <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
+        <Tooltip
+            title={title}
+            placement={placement === "bottom" ? "bottom" : "top"}
+            mouseEnterDelay={0.2}
+            color="#ffffff"
+            styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}
+        >
             <button type="button" className={`group relative flex h-12 items-center whitespace-nowrap px-1.5 ${danger ? "text-[#ef4444]" : ""}`} onClick={onClick} aria-label={title}>
                 <span className={`flex h-9 items-center ${hasText ? "gap-2 px-2.5" : "justify-center px-2"} rounded-lg transition group-hover:bg-[#f0f0f1] ${active ? "bg-[#eeeeef]" : ""}`}>
                     {icon}

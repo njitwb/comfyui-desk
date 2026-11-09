@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { ArrowUp, LoaderCircle, Maximize2, RefreshCw, Square } from "lucide-react";
+import { ArrowUp, LoaderCircle, Maximize2, Minimize2, RefreshCw, Square } from "lucide-react";
 import { Button, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
+
+import { cn } from "@/lib/utils";
 
 import { ChannelWorkflowPicker } from "@/components/channel-workflow-picker";
 import { decodeChannelModel, defaultConfig, encodeChannelModel, findWorkflow, getDefaultWorkflow, resolveModelChannel, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
@@ -33,6 +35,7 @@ type CanvasNodePromptPanelProps = {
     onStartReferenceSelection?: (nodeId: string) => void;
     onReorderReferences?: (toNodeId: string, orderedSourceNodeIds: string[]) => void;
     onLocateNode?: (nodeId: string) => void;
+    onSettingsOpenChange?: (open: boolean) => void;
     onImageSettingsOpenChange?: (open: boolean) => void;
     modeOverride?: CanvasNodeGenerationMode; // Plugin nodes set their generation type through useBuiltinPanel.mode.
 };
@@ -51,9 +54,11 @@ export function CanvasNodePromptPanel({
     onStartReferenceSelection,
     onReorderReferences,
     onLocateNode,
+    onSettingsOpenChange,
     onImageSettingsOpenChange,
     modeOverride,
 }: CanvasNodePromptPanelProps) {
+    const handleSettingsOpenChange = onSettingsOpenChange || onImageSettingsOpenChange;
     const { t } = useTranslation();
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
@@ -67,6 +72,7 @@ export function CanvasNodePromptPanel({
     const isGenerating = isRunning || node.metadata?.status === "loading";
     const [prompt, setPrompt] = useState(node.metadata?.composerContent ?? node.metadata?.prompt ?? "");
     const [expanded, setExpanded] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Restore prompts only when switching nodes; preserve the current input after generation on the same node.
     useEffect(() => {
@@ -88,6 +94,12 @@ export function CanvasNodePromptPanel({
 
     const openExpandedEditor = () => {
         setExpanded(true);
+        setIsFullscreen(false);
+    };
+
+    const closeExpandedEditor = () => {
+        setExpanded(false);
+        setIsFullscreen(false);
     };
 
     return (
@@ -145,7 +157,7 @@ export function CanvasNodePromptPanel({
                                 buttonClassName="!h-10 min-w-0 !max-w-[160px] !justify-start !rounded-full !px-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                                 onMissingConfig={() => openConfigDialog(true)}
-                                onOpenChange={onImageSettingsOpenChange}
+                                onOpenChange={handleSettingsOpenChange}
                             />
                         </>
                     ) : mode === "video" ? (
@@ -168,6 +180,7 @@ export function CanvasNodePromptPanel({
                                 config={config}
                                 buttonClassName="!h-10 min-w-0 !max-w-[160px] !justify-start !rounded-full !px-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value, config))}
+                                onOpenChange={handleSettingsOpenChange}
                             />
                         </>
                     ) : mode === "audio" ? (
@@ -178,7 +191,12 @@ export function CanvasNodePromptPanel({
                                 workflowId={node.metadata?.workflowId}
                                 onChange={(channelId, workflowId) => onConfigChange(node.id, { channelId, workflowId })}
                             />
-                            <CanvasAudioSettingsPopover config={config} buttonClassName="!h-10 min-w-0 !max-w-[160px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))} />
+                            <CanvasAudioSettingsPopover
+                                config={config}
+                                buttonClassName="!h-10 min-w-0 !max-w-[160px] !justify-start !rounded-full !px-3"
+                                onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))}
+                                onOpenChange={handleSettingsOpenChange}
+                            />
                         </>
                     ) : (
                         <>
@@ -188,7 +206,14 @@ export function CanvasNodePromptPanel({
                                 workflowId={node.metadata?.workflowId}
                                 onChange={(channelId, workflowId) => onConfigChange(node.id, { channelId, workflowId })}
                             />
-                            <CanvasTextSettingsPopover config={config} count={node.metadata?.textCount || 1} buttonClassName="!h-10 min-w-0 !max-w-[160px] !justify-start !rounded-full !px-3" onConfigChange={(_, value) => onConfigChange(node.id, { reasoningEffort: value })} onCountChange={(textCount) => onConfigChange(node.id, { textCount })} />
+                            <CanvasTextSettingsPopover
+                                config={config}
+                                count={node.metadata?.textCount || 1}
+                                buttonClassName="!h-10 min-w-0 !max-w-[160px] !justify-start !rounded-full !px-3"
+                                onConfigChange={(_, value) => onConfigChange(node.id, { reasoningEffort: value })}
+                                onCountChange={(textCount) => onConfigChange(node.id, { textCount })}
+                                onOpenChange={handleSettingsOpenChange}
+                            />
                         </>
                     )}
                 </div>
@@ -215,20 +240,67 @@ export function CanvasNodePromptPanel({
                     </Button>
                 )}
             </div>
-            <Modal title={t("canvas.promptPanel.editorTitle")} open={expanded} centered width={760} footer={null} onCancel={() => setExpanded(false)} destroyOnHidden>
-                <div data-canvas-no-zoom className="pt-2" onWheelCapture={(event) => event.stopPropagation()}>
+            <Modal
+                title={
+                    <div className="flex items-center justify-between pr-8">
+                        <span className="text-base font-semibold">{t("canvas.promptPanel.editorTitle")}</span>
+                        <Tooltip title={isFullscreen ? t("canvas.promptPanel.exitFullscreen") : t("canvas.promptPanel.fullscreen")}>
+                            <Button
+                                type="text"
+                                size="small"
+                                className="!flex !h-7 !w-7 !items-center !justify-center !rounded-lg !bg-transparent hover:!bg-black/5 dark:hover:!bg-white/10"
+                                style={{ color: theme.node.text }}
+                                icon={isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                                onClick={() => setIsFullscreen((prev) => !prev)}
+                                aria-label={isFullscreen ? t("canvas.promptPanel.exitFullscreen") : t("canvas.promptPanel.fullscreen")}
+                            />
+                        </Tooltip>
+                    </div>
+                }
+                open={expanded}
+                centered={!isFullscreen}
+                width={isFullscreen ? "100vw" : 800}
+                style={isFullscreen ? { top: 0, margin: 0, maxWidth: "100vw", paddingBottom: 0 } : undefined}
+                wrapClassName={isFullscreen ? "!p-0" : undefined}
+                styles={{
+                    container: isFullscreen
+                        ? { height: "100vh", borderRadius: 0, display: "flex", flexDirection: "column", padding: "16px 24px" }
+                        : { display: "flex", flexDirection: "column" },
+                    body: isFullscreen
+                        ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }
+                        : { display: "flex", flexDirection: "column" },
+                }}
+                footer={
+                    <div className="flex items-center justify-between pt-2">
+                        <div className="flex items-center gap-3 text-xs" style={{ color: theme.node.placeholder }}>
+                            <CanvasPromptLibrary onSelect={updatePrompt} />
+                            <span>{t("canvas.promptPanel.charCount", { count: prompt.length })}</span>
+                        </div>
+                        <Button type="primary" className="!rounded-full !px-5" onClick={closeExpandedEditor}>
+                            {t("canvas.promptPanel.done")}
+                        </Button>
+                    </div>
+                }
+                onCancel={closeExpandedEditor}
+                destroyOnHidden
+            >
+                <div
+                    data-canvas-no-zoom
+                    className={cn("flex flex-col pt-2", isFullscreen ? "flex-1 min-h-0" : "")}
+                    onWheelCapture={(event) => event.stopPropagation()}
+                >
                     <CanvasNodeReferenceBar
                         nodeId={node.id}
                         nodes={nodes}
                         connectedNodes={connectedNodes}
                         onDisconnect={onDisconnectReference}
                         onStartSelection={(nodeId) => {
-                            setExpanded(false);
+                            closeExpandedEditor();
                             onStartReferenceSelection?.(nodeId);
                         }}
                         onReorder={onReorderReferences}
                         onLocateNode={(targetId) => {
-                            setExpanded(false);
+                            closeExpandedEditor();
                             onLocateNode?.(targetId);
                         }}
                     />
@@ -236,7 +308,11 @@ export function CanvasNodePromptPanel({
                         value={prompt}
                         references={mentionReferences}
                         onChange={updatePrompt}
-                        className="thin-scrollbar h-[52dvh] min-h-80 w-full cursor-text overflow-y-auto rounded-xl border p-4 text-[15px] leading-6 outline-none"
+                        containerClassName={isFullscreen ? "flex-1 min-h-0 flex flex-col" : ""}
+                        className={cn(
+                            "thin-scrollbar w-full cursor-text overflow-y-auto rounded-xl border p-4 text-[15px] leading-6 outline-none",
+                            isFullscreen ? "flex-1 min-h-[50vh] h-full" : "h-[52dvh] min-h-80"
+                        )}
                         style={{ background: "transparent", borderColor: theme.toolbar.border, color: theme.node.text }}
                         placeholder={t(`canvas.promptPanel.${mode === "image" && hasImageContent ? "editImage" : mode === "text" && hasTextContent ? "editText" : mode}`)}
                     />
@@ -277,7 +353,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         quality: node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
         size: node.metadata?.size || globalConfig.size || defaultConfig.size,
         background: node.metadata?.background ?? globalConfig.background ?? defaultConfig.background,
-        videoSeconds: (node.metadata?.seconds === "6" ? undefined : node.metadata?.seconds) || (globalConfig.videoSeconds === "6" ? "5" : globalConfig.videoSeconds) || defaultConfig.videoSeconds,
+        videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
         audioSeconds: node.metadata?.seconds || globalConfig.audioSeconds || defaultConfig.audioSeconds || "60",
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         videoGenerateAudio: node.metadata?.generateAudio || globalConfig.videoGenerateAudio || defaultConfig.videoGenerateAudio,

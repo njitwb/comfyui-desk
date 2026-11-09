@@ -160,12 +160,12 @@ export function validateComfyuiWorkflow(
         if (hasOutputVideo || hasOutputText || hasOutputAudio) {
             return { ok: false, error: "生图工作流不得包含 output_video、output_text 或 output_audio 标记" };
         }
-    } else if (category === "omniVideo" || category === "frameVideo" || category === "faceRefine") {
+    } else if (category === "omniVideo" || category === "frameVideo" || category === "faceRefine" || category === "depthVideo") {
         if (!hasOutputVideo) {
-            return { ok: false, error: "生视频/人脸修复工作流缺少 \"output_video\" 标记（请在 SaveVideo 或 VHS_VideoCombine 保存节点上标记 _meta.title 为 output_video）" };
+            return { ok: false, error: "生视频/人脸修复/深度视频工作流缺少 \"output_video\" 标记（请在 SaveVideo 或 VHS_VideoCombine 保存节点上标记 _meta.title 为 output_video）" };
         }
         if (hasOutputImage || hasOutputText || hasOutputAudio) {
-            return { ok: false, error: "视频/人脸修复工作流不得包含 output_image、output_text 或 output_audio 标记" };
+            return { ok: false, error: "视频/人脸修复/深度视频工作流不得包含 output_image、output_text 或 output_audio 标记" };
         }
     } else if (category === "text") {
         if (!hasOutputText) {
@@ -294,6 +294,12 @@ export function validateComfyuiWorkflow(
             }
             if (!hasPrompt) {
                 return { ok: false, error: "视频人脸修复工作流缺少 \"prompt\" 提示词槽位节点" };
+            }
+            break;
+
+        case "depthVideo":
+            if (!hasRefVideo) {
+                return { ok: false, error: "深度视频提取工作流缺少待提取视频输入槽位（必须标记 \"ref_video_01\" 槽位节点）" };
             }
             break;
     }
@@ -780,20 +786,49 @@ type ComfyuiJobResponse = {
     outputs?: Record<string, unknown>;
 };
 
-/** Collect the image asset identifiers from outputs. */
-function collectImageAssetIds(outputs: unknown): string[] {
-    const ids: string[] = [];
-    if (!Array.isArray(outputs)) return ids;
+/**
+ * Rank ComfyUI output asset item types:
+ * 0 = "output" (saved generation final output, highest priority)
+ * 1 = "temp" / unspecified (preview output or generic media)
+ * 2 = "input" (reference input assets or intermediate cache, lowest priority)
+ */
+export function getOutputTypeRank(outputType?: string, id?: string): number {
+    const ot = (outputType || "").toLowerCase().trim();
+    if (ot === "output") return 0;
+    if (ot === "temp") return 1;
+    if (ot === "input") return 2;
+    if (id) {
+        if (/[?&]type=output(?=&|$)/i.test(id)) return 0;
+        if (/[?&]type=temp(?=&|$)/i.test(id)) return 1;
+        if (/[?&]type=input(?=&|$)/i.test(id)) return 2;
+    }
+    return 1;
+}
+
+/** Collect the image asset identifiers from outputs, prioritizing type = "output". */
+export function collectImageAssetIds(outputs: unknown): string[] {
+    if (!Array.isArray(outputs)) return [];
+    const outputIds: string[] = [];
+    const tempIds: string[] = [];
+    const otherIds: string[] = [];
+
     for (const entry of outputs) {
         if (!entry || typeof entry !== "object") continue;
-        const { id, type, content_type, filename } = entry as { id?: unknown; type?: unknown; content_type?: unknown; filename?: unknown };
+        const { id, type, output_type, content_type, filename } = entry as { id?: unknown; type?: unknown; output_type?: unknown; content_type?: unknown; filename?: unknown };
         const assetId = typeof id === "string" && id ? id : typeof filename === "string" ? filename : "";
         if (!assetId) continue;
         const fn = typeof filename === "string" ? filename.toLowerCase() : "";
         if (fn.endsWith(".mp4") || fn.endsWith(".webm") || fn.endsWith(".mov") || fn.endsWith(".mkv")) continue;
-        if (type === "image" || (typeof content_type === "string" && content_type.startsWith("image/"))) ids.push(assetId);
+        if (type === "image" || (typeof content_type === "string" && content_type.startsWith("image/"))) {
+            const rank = getOutputTypeRank(typeof output_type === "string" ? output_type : undefined, assetId);
+            if (rank === 0) outputIds.push(assetId);
+            else if (rank === 1) tempIds.push(assetId);
+            else otherIds.push(assetId);
+        }
     }
-    return ids;
+    if (outputIds.length > 0) return outputIds;
+    if (tempIds.length > 0) return tempIds;
+    return otherIds;
 }
 
 export function prioritizeInpaintOutput(outputs: unknown, workflow: ComfyuiWorkflowJson): string[] {
@@ -837,6 +872,7 @@ export type PollJobResult = {
         filename?: string;
         subfolder?: string;
         type?: string;
+        output_type?: string;
         content_type?: string;
         node_id?: string;
         text?: string;
@@ -907,6 +943,7 @@ export async function pollJobRaw(jobId: string, baseUrl: string, token?: string,
                                 filename: img.filename,
                                 subfolder,
                                 type: isVideo ? "video" : itemType,
+                                output_type: itemType,
                                 content_type: contentType,
                                 node_id: nodeId,
                             });
@@ -925,6 +962,7 @@ export async function pollJobRaw(jobId: string, baseUrl: string, token?: string,
                                 filename: vid.filename,
                                 subfolder,
                                 type: "video",
+                                output_type: itemType,
                                 content_type: "video/mp4",
                                 node_id: nodeId,
                             });
@@ -942,6 +980,7 @@ export async function pollJobRaw(jobId: string, baseUrl: string, token?: string,
                                 filename: gif.filename,
                                 subfolder,
                                 type: "video",
+                                output_type: itemType,
                                 content_type: "video/mp4",
                                 node_id: nodeId,
                             });
@@ -983,6 +1022,7 @@ export async function pollJobRaw(jobId: string, baseUrl: string, token?: string,
                                 filename,
                                 subfolder,
                                 type: "audio",
+                                output_type: itemType,
                                 content_type: contentType,
                                 node_id: nodeId,
                             });
@@ -1005,9 +1045,10 @@ export async function pollJobRaw(jobId: string, baseUrl: string, token?: string,
                                     filename: fn,
                                     subfolder,
                                     type: "audio",
+                                    output_type: itemType,
                                     content_type: "audio/mpeg",
                                     node_id: nodeId,
-                                });
+                                    });
                             }
                         }
                     }
@@ -1038,6 +1079,8 @@ export async function pollJobRaw(jobId: string, baseUrl: string, token?: string,
             }
 
             if (jobEntry.status?.completed || outputs.length > 0) {
+                // Prioritize outputs: type = "output" (0) > "temp" (1) > "input" / others (2)
+                outputs.sort((a, b) => getOutputTypeRank(a.output_type, a.id) - getOutputTypeRank(b.output_type, b.id));
                 return { outputs, job: jobEntry };
             }
         }
@@ -1938,14 +1981,17 @@ export async function downloadComfyuiVideo(assetId: string, baseUrl: string, tok
 }
 
 /**
- * Collect output asset ids for video generation jobs.
+ * Collect output asset ids for video generation jobs, prioritizing type = "output".
  */
 export function collectVideoAssetIds(outputs: unknown): string[] {
     if (!Array.isArray(outputs)) return [];
-    const ids: string[] = [];
+    const outputIds: string[] = [];
+    const tempIds: string[] = [];
+    const otherIds: string[] = [];
+
     for (const item of outputs) {
         if (!item || typeof item !== "object") continue;
-        const rec = item as { id?: unknown; type?: unknown; content_type?: unknown; url?: unknown; filename?: unknown; subfolder?: unknown };
+        const rec = item as { id?: unknown; type?: unknown; output_type?: unknown; content_type?: unknown; url?: unknown; filename?: unknown; subfolder?: unknown };
         const id = typeof rec.id === "string" && rec.id ? rec.id : typeof rec.url === "string" && rec.url ? rec.url : typeof rec.filename === "string" ? rec.filename : "";
         if (!id) continue;
         const filename = typeof rec.filename === "string" ? rec.filename.toLowerCase() : "";
@@ -1965,30 +2011,50 @@ export function collectVideoAssetIds(outputs: unknown): string[] {
             idLower.includes(".mkv");
 
         if (isVideo) {
-            ids.push(id);
-        }
-    }
-    if (ids.length === 0) {
-        for (const item of outputs) {
-            if (item && typeof item === "object") {
-                const rec = item as { id?: unknown; url?: unknown; filename?: unknown };
-                const fallbackId = typeof rec.id === "string" && rec.id ? rec.id : typeof rec.url === "string" && rec.url ? rec.url : typeof rec.filename === "string" ? rec.filename : "";
-                if (fallbackId) ids.push(fallbackId);
+            const rank = getOutputTypeRank(typeof rec.output_type === "string" ? rec.output_type : undefined, id);
+            if (rank === 0) {
+                outputIds.push(id);
+            } else if (rank === 1) {
+                tempIds.push(id);
+            } else {
+                otherIds.push(id);
             }
         }
     }
-    return ids;
+
+    if (outputIds.length > 0) return outputIds;
+    if (tempIds.length > 0) return tempIds;
+    if (otherIds.length > 0) return otherIds;
+
+    for (const item of outputs) {
+        if (item && typeof item === "object") {
+            const rec = item as { id?: unknown; url?: unknown; filename?: unknown; output_type?: unknown };
+            const fallbackId = typeof rec.id === "string" && rec.id ? rec.id : typeof rec.url === "string" && rec.url ? rec.url : typeof rec.filename === "string" ? rec.filename : "";
+            if (fallbackId) {
+                const rank = getOutputTypeRank(typeof rec.output_type === "string" ? rec.output_type : undefined, fallbackId);
+                if (rank === 0) outputIds.push(fallbackId);
+                else if (rank === 1) tempIds.push(fallbackId);
+                else otherIds.push(fallbackId);
+            }
+        }
+    }
+    if (outputIds.length > 0) return outputIds;
+    if (tempIds.length > 0) return tempIds;
+    return otherIds;
 }
 
 /**
- * Collect output asset ids for audio generation jobs.
+ * Collect output asset ids for audio generation jobs, prioritizing type = "output".
  */
 export function collectAudioAssetIds(outputs: unknown): string[] {
     if (!Array.isArray(outputs)) return [];
-    const ids: string[] = [];
+    const outputIds: string[] = [];
+    const tempIds: string[] = [];
+    const otherIds: string[] = [];
+
     for (const item of outputs) {
         if (!item || typeof item !== "object") continue;
-        const rec = item as { id?: unknown; type?: unknown; content_type?: unknown; filename?: unknown; url?: unknown };
+        const rec = item as { id?: unknown; type?: unknown; output_type?: unknown; content_type?: unknown; filename?: unknown; url?: unknown };
         const id = typeof rec.id === "string" && rec.id ? rec.id : typeof rec.url === "string" && rec.url ? rec.url : typeof rec.filename === "string" ? rec.filename : "";
         if (!id) continue;
         const fn = typeof rec.filename === "string" ? rec.filename.toLowerCase() : "";
@@ -2002,10 +2068,19 @@ export function collectAudioAssetIds(outputs: unknown): string[] {
             /\.(mp3|wav|ogg|flac|m4a|aac|opus)/i.test(idLower);
 
         if (isAudio) {
-            ids.push(id);
+            const rank = getOutputTypeRank(typeof rec.output_type === "string" ? rec.output_type : undefined, id);
+            if (rank === 0) {
+                outputIds.push(id);
+            } else if (rank === 1) {
+                tempIds.push(id);
+            } else {
+                otherIds.push(id);
+            }
         }
     }
-    return ids;
+    if (outputIds.length > 0) return outputIds;
+    if (tempIds.length > 0) return tempIds;
+    return otherIds;
 }
 
 /**
@@ -2310,7 +2385,7 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
           ? getDefaultWorkflow(channel, initialVideoMode === "frame" ? "frameVideo" : "omniVideo")
           : undefined;
     const isFrameWorkflow = targetWorkflowItem?.category === "frameVideo";
-    const isOmniOrRefineWorkflow = targetWorkflowItem?.category === "omniVideo" || targetWorkflowItem?.category === "faceRefine";
+    const isOmniOrRefineWorkflow = targetWorkflowItem?.category === "omniVideo" || targetWorkflowItem?.category === "faceRefine" || targetWorkflowItem?.category === "depthVideo";
     const hasReferenceVideos = Boolean(req.referenceVideos && req.referenceVideos.length > 0);
     const videoMode = isFrameWorkflow
         ? "frame"

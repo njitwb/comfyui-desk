@@ -59,20 +59,39 @@ export function ConnectionPath({
     );
 }
 
-export function ActiveConnectionPath({ node, handle, mouseWorld, target }: { node?: CanvasNodeData; handle: ConnectionHandle; mouseWorld: Position; target?: CanvasNodeData }) {
+export function ActiveConnectionPath({
+    node,
+    nodes,
+    handle,
+    mouseWorld,
+    target,
+}: {
+    node?: CanvasNodeData;
+    nodes?: CanvasNodeData[];
+    handle: ConnectionHandle;
+    mouseWorld: Position;
+    target?: CanvasNodeData;
+}) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    if (!node) return null;
+    const activeNodes = (nodes && nodes.length > 0 ? nodes : node ? [node] : []).filter(Boolean);
+    if (activeNodes.length === 0) return null;
 
-    const startX = handle.handleType === "source" ? node.position.x + node.width : mouseWorld.x;
-    const startY = handle.handleType === "source" ? node.position.y + node.height / 2 : mouseWorld.y;
-    const endX = handle.handleType === "source" ? mouseWorld.x : node.position.x;
-    const endY = handle.handleType === "source" ? mouseWorld.y : node.position.y + node.height / 2;
-    const snappedStartX = handle.handleType === "target" && target ? target.position.x + target.width : startX;
-    const snappedStartY = handle.handleType === "target" && target ? target.position.y + target.height / 2 : startY;
-    const snappedEndX = handle.handleType === "source" && target ? target.position.x : endX;
-    const snappedEndY = handle.handleType === "source" && target ? target.position.y + target.height / 2 : endY;
-    const distance = Math.abs(snappedEndX - snappedStartX);
-    const pathD = `M ${snappedStartX} ${snappedStartY} C ${snappedStartX + distance * 0.5} ${snappedStartY}, ${snappedEndX - distance * 0.5} ${snappedEndY}, ${snappedEndX} ${snappedEndY}`;
+    return (
+        <g>
+            {activeNodes.map((activeNode) => {
+                const startX = handle.handleType === "source" ? activeNode.position.x + activeNode.width : mouseWorld.x;
+                const startY = handle.handleType === "source" ? activeNode.position.y + activeNode.height / 2 : mouseWorld.y;
+                const endX = handle.handleType === "source" ? mouseWorld.x : activeNode.position.x;
+                const endY = handle.handleType === "source" ? mouseWorld.y : activeNode.position.y + activeNode.height / 2;
+                const snappedStartX = handle.handleType === "target" && target ? target.position.x + target.width : startX;
+                const snappedStartY = handle.handleType === "target" && target ? target.position.y + target.height / 2 : startY;
+                const snappedEndX = handle.handleType === "source" && target ? target.position.x : endX;
+                const snappedEndY = handle.handleType === "source" && target ? target.position.y + target.height / 2 : endY;
+                const distance = Math.abs(snappedEndX - snappedStartX);
+                const pathD = `M ${snappedStartX} ${snappedStartY} C ${snappedStartX + distance * 0.5} ${snappedStartY}, ${snappedEndX - distance * 0.5} ${snappedEndY}, ${snappedEndX} ${snappedEndY}`;
 
-    return <path d={pathD} stroke={theme.node.activeStroke} strokeWidth="2" fill="none" strokeDasharray="5,5" />;
+                return <path key={activeNode.id} d={pathD} stroke={theme.node.activeStroke} strokeWidth="2" fill="none" strokeDasharray="5,5" />;
+            })}
+        </g>
+    );
 }

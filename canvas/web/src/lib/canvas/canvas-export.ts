@@ -44,7 +44,9 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
 
     await Promise.all(
         nodes.map(async (node) => {
-            const title = node.title || node.type;
+            const shortId = node.id.slice(0, 4);
+            const titleOrType = node.title?.trim() || node.type;
+            const title = `${titleOrType}_${shortId}`;
             const storageKey = node.metadata?.storageKey || "";
             if (storageKey) {
                 const blob = storageKey.startsWith("image:") ? await getImageBlob(storageKey) : await getMediaBlob(storageKey);
@@ -71,8 +73,8 @@ function collectStorageKeys(value: unknown, keys = new Set<string>()) {
     return [...keys];
 }
 
-function safeFileName(value: string) {
-    return value.replace(/[\\/:*?"<>|]/g, "_");
+export function safeFileName(value: string) {
+    return value.trim().replace(/[\\/:*?"<>|]/g, "_");
 }
 
 function fileExtension(mimeType: string, storageKey: string) {

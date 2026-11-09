@@ -52,6 +52,8 @@ export function CanvasConfigComposer({
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
+    const lastEmittedRef = useRef(value);
+    const savedRangeRef = useRef<Range | null>(null);
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -65,9 +67,12 @@ export function CanvasConfigComposer({
     }, [inputs, mention]);
 
     useEffect(() => {
-        if (document.activeElement === editorRef.current) return;
         const editor = editorRef.current;
         if (!editor) return;
+        if (serializeEditor(editor) === value || (document.activeElement === editor && value === lastEmittedRef.current)) {
+            lastEmittedRef.current = value;
+            return;
+        }
         editor.textContent = "";
         tokens.forEach((token) => {
             if (token.type === "text") {
@@ -81,13 +86,19 @@ export function CanvasConfigComposer({
                 editor.append(document.createTextNode(`@[node:${token.nodeId}]`));
             }
         });
-    }, [inputs, referenceById, theme, tokens]);
+        lastEmittedRef.current = value;
+    }, [inputs, referenceById, theme, tokens, value]);
+
+    const emit = (next: string) => {
+        lastEmittedRef.current = next;
+        onChange(next);
+    };
 
     const syncFromEditor = () => {
         const editor = editorRef.current;
         if (!editor) return;
         const next = serializeEditor(editor);
-        onChange(next);
+        emit(next);
         syncMention();
     };
 
@@ -98,6 +109,10 @@ export function CanvasConfigComposer({
             closeMention();
             return;
         }
+        const selection = window.getSelection();
+        if (selection?.rangeCount && editorRef.current?.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+            savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+        }
         setMention({ query: match[1] || "" });
         setActiveIndex(0);
     };
@@ -105,29 +120,45 @@ export function CanvasConfigComposer({
     const closeMention = () => {
         setMention(null);
         setActiveIndex(0);
+        savedRangeRef.current = null;
     };
 
     const insertReference = (input: NodeGenerationInput) => {
         const editor = editorRef.current;
         if (!editor) return;
-        removeActiveMention();
-        const chip = createReferenceChip(input, inputs, theme, setImagePreview);
-        const space = document.createTextNode(" ");
         const selection = window.getSelection();
-        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-        if (range) {
-            range.insertNode(space);
-            range.insertNode(chip);
-            range.setStartAfter(space);
-            range.collapse(true);
+        let range: Range | null = null;
+        if (selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+            range = selection.getRangeAt(0);
+        } else if (savedRangeRef.current && editor.contains(savedRangeRef.current.commonAncestorContainer)) {
+            range = savedRangeRef.current;
             selection?.removeAllRanges();
             selection?.addRange(range);
+        }
+
+        removeActiveMention(range);
+        const chip = createReferenceChip(input, inputs, theme, setImagePreview);
+        const space = document.createTextNode(" ");
+        const activeRange = selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+            ? selection.getRangeAt(0)
+            : range && editor.contains(range.commonAncestorContainer)
+            ? range
+            : null;
+
+        if (activeRange) {
+            activeRange.insertNode(space);
+            activeRange.insertNode(chip);
+            activeRange.setStartAfter(space);
+            activeRange.collapse(true);
+            selection?.removeAllRanges();
+            selection?.addRange(activeRange);
         } else {
             editor.append(chip, space);
             placeCaretAtEnd(editor);
         }
         closeMention();
-        onChange(serializeEditor(editor));
+        emit(serializeEditor(editor));
+        editor.focus();
     };
 
     const stopCanvasInteraction = (event: PointerEvent | MouseEvent) => event.stopPropagation();
@@ -206,7 +237,12 @@ export function CanvasConfigComposer({
                         }
                         requestAnimationFrame(syncMention);
                     }}
-                    onBlur={() => window.setTimeout(closeMention, 120)}
+                    onBlur={(event) => {
+                        if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest("[data-canvas-resource-mention-menu]")) {
+                            return;
+                        }
+                        window.setTimeout(closeMention, 120);
+                    }}
                 />
                 {mention && candidates.length ? <MentionMenu inputs={candidates} allInputs={inputs} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} /> : null}
             </div>
@@ -230,8 +266,22 @@ function MentionMenu({ inputs, allInputs, activeIndex, theme, onSelect }: { inpu
         onSelect(input);
     };
 
+    const stopInteraction = (event: PointerEvent | MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+    };
+
     return (
-        <div className="absolute left-2 top-[calc(100%+6px)] z-[90] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }}>
+        <div
+            tabIndex={-1}
+            data-canvas-no-zoom="true"
+            data-canvas-resource-mention-menu="true"
+            className="absolute left-2 top-[calc(100%+6px)] z-[90] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl outline-none"
+            style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }}
+            onPointerDown={stopInteraction}
+            onMouseDown={stopInteraction}
+            onClick={(event) => event.stopPropagation()}
+        >
             {inputs.map((input, index) => (
                 <button
                     key={input.nodeId}
@@ -239,7 +289,15 @@ function MentionMenu({ inputs, allInputs, activeIndex, theme, onSelect }: { inpu
                     type="button"
                     className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition"
                     style={{ background: index === activeIndex ? theme.toolbar.activeBg : "transparent", color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }}
+                    onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }}
                     onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }}
+                    onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
                         selectInput(input);
@@ -313,10 +371,20 @@ function serializeNodes(nodes: NodeListOf<ChildNode>) {
     return result;
 }
 
-function removeActiveMention() {
+function removeActiveMention(rangeOverride?: Range | null) {
     const selection = window.getSelection();
-    if (!selection?.rangeCount) return;
-    const range = selection.getRangeAt(0);
+    const range = rangeOverride || (selection?.rangeCount ? selection.getRangeAt(0) : null);
+    if (!range) return;
+    if (range.startContainer.nodeType === Node.TEXT_NODE) {
+        const textNode = range.startContainer as Text;
+        const beforeCaret = (textNode.textContent || "").slice(0, range.startOffset);
+        const lastAt = beforeCaret.lastIndexOf("@");
+        if (lastAt !== -1) {
+            range.setStart(textNode, lastAt);
+            range.deleteContents();
+            return;
+        }
+    }
     const text = textBeforeCaret();
     const match = /@([^\s@]*)$/.exec(text);
     if (!match) return;

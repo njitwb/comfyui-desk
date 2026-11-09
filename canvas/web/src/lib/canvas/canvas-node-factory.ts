@@ -77,62 +77,96 @@ export function applyNodeConfigPatch(node: CanvasNodeData, patch: Partial<Canvas
     return size && (node.type === CanvasNodeType.Image || node.type === CanvasNodeType.Video) ? { ...next, ...size, position: { x: node.position.x + node.width / 2 - size.width / 2, y: node.position.y + node.height / 2 - size.height / 2 } } : next;
 }
 
-export function cloneNodeMetadata(metadata?: CanvasNodeMetadata): CanvasNodeMetadata | undefined {
+export function cloneNodeMetadata(metadata?: CanvasNodeMetadata, nodeType?: CanvasNodeTypeId): CanvasNodeMetadata | undefined {
     if (!metadata) return undefined;
     const cloned = structuredClone(metadata);
 
-    // 1. 重置瞬时生成态与任务标记：新节点作为「未生成」就绪态，杜绝陈旧任务与报错干扰
-    delete cloned.status;
+    // 1. 重置瞬时任务与报错标记
     delete cloned.jobId;
     delete cloned.errorDetails;
     delete cloned.isTimeout;
 
-    // 2. 清理多图批次 (images) 数组：重新生成子项 ID，清除任务 ID，过滤未就绪的 loading 占位
-    if (Array.isArray(cloned.images) && cloned.images.length > 0) {
-        const idMap = new Map<string, string>();
-        const validImages = cloned.images.filter((image) => image.content || image.status !== "loading");
-        cloned.images = validImages.map((image) => {
-            const newId = nanoid();
-            idMap.set(image.id, newId);
-            const nextImage: CanvasNodeImage = {
-                ...image,
-                id: newId,
-                jobId: undefined,
-                errorDetails: undefined,
-                isTimeout: undefined,
-                status: image.content ? "success" : image.status === "error" ? "idle" : image.status,
-            };
-            return nextImage;
-        });
-        if (cloned.primaryImageId && idMap.has(cloned.primaryImageId)) {
-            cloned.primaryImageId = idMap.get(cloned.primaryImageId);
-        } else if (cloned.images[0]) {
-            cloned.primaryImageId = cloned.images[0].id;
-        }
-    }
+    const targetType = nodeType || (cloned.generationMode as CanvasNodeType) || undefined;
 
-    // 3. 清理多文本 (texts) 数组：重新生成子项 ID，清除任务 ID，过滤未就绪的 loading 占位
-    if (Array.isArray(cloned.texts) && cloned.texts.length > 0) {
-        const idMap = new Map<string, string>();
-        const validTexts = cloned.texts.filter((text) => text.content || text.status !== "loading");
-        cloned.texts = validTexts.map((text) => {
-            const newId = nanoid();
-            idMap.set(text.id, newId);
-            const nextText: CanvasNodeText = {
-                ...text,
-                id: newId,
-                jobId: undefined,
-                errorDetails: undefined,
-                isTimeout: undefined,
-                status: text.content ? "success" : text.status === "error" ? "idle" : text.status,
-            };
-            return nextText;
-        });
-        if (cloned.primaryTextId && idMap.has(cloned.primaryTextId)) {
-            cloned.primaryTextId = idMap.get(cloned.primaryTextId);
-        } else if (cloned.texts[0]) {
-            cloned.primaryTextId = cloned.texts[0].id;
-        }
+    // 2. 识别是否属于 AI 生成类节点（生图/生视频/生音频/AI文本）
+    const isAiGenerativeImage =
+        targetType === CanvasNodeType.Image &&
+        Boolean(
+            cloned.generationMode === "image" ||
+            cloned.generationType ||
+            cloned.prompt ||
+            cloned.model ||
+            cloned.workflowId ||
+            (Array.isArray(cloned.images) && cloned.images.length > 0)
+        );
+
+    const isAiGenerativeVideo =
+        targetType === CanvasNodeType.Video &&
+        Boolean(
+            cloned.generationMode === "video" ||
+            cloned.prompt ||
+            cloned.model ||
+            cloned.workflowId ||
+            cloned.videoMode
+        );
+
+    const isAiGenerativeAudio =
+        targetType === CanvasNodeType.Audio &&
+        Boolean(
+            cloned.generationMode === "audio" ||
+            cloned.prompt ||
+            cloned.model ||
+            cloned.workflowId ||
+            cloned.audioVoice
+        );
+
+    const isAiGenerativeText =
+        targetType === CanvasNodeType.Text &&
+        Boolean(
+            cloned.generationMode === "text" ||
+            (Array.isArray(cloned.texts) && cloned.texts.length > 0)
+        );
+
+    if (isAiGenerativeImage) {
+        // AI 生图节点：清空媒体产物，保留提示词、模型、尺寸、参考图等生成配置，就绪重置为 idle
+        cloned.content = "";
+        delete cloned.storageKey;
+        delete cloned.images;
+        delete cloned.primaryImageId;
+        delete cloned.naturalWidth;
+        delete cloned.naturalHeight;
+        delete cloned.bytes;
+        delete cloned.mimeType;
+        delete cloned.seed;
+        cloned.status = "idle";
+    } else if (isAiGenerativeVideo) {
+        // AI 视频节点：清空视频产物，保留提示词、模型、时长、参考图等生成配置，就绪重置为 idle
+        cloned.content = "";
+        delete cloned.storageKey;
+        delete cloned.naturalWidth;
+        delete cloned.naturalHeight;
+        delete cloned.bytes;
+        delete cloned.mimeType;
+        delete cloned.durationMs;
+        delete cloned.seed;
+        cloned.status = "idle";
+    } else if (isAiGenerativeAudio) {
+        // AI 音频节点：清空音频产物，保留提示词、音色、时长等生成配置，就绪重置为 idle
+        cloned.content = "";
+        delete cloned.storageKey;
+        delete cloned.bytes;
+        delete cloned.mimeType;
+        delete cloned.durationMs;
+        cloned.status = "idle";
+    } else if (isAiGenerativeText) {
+        // AI 文本节点：清空生成文本产物，保留提示词与配置，就绪重置为 idle
+        cloned.content = "";
+        delete cloned.texts;
+        delete cloned.primaryTextId;
+        cloned.status = "idle";
+    } else {
+        // 用户手动上传的媒体素材（图片/视频/音频）或手动输入的文本节点：保留内容与状态
+        cloned.status = cloned.content ? "success" : "idle";
     }
 
     return cloned;

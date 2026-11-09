@@ -1,12 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { App, Empty, Input, Popconfirm, Select, Spin, Tag } from "antd";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
+import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
-import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
+import { exportCanvasNodes, safeFileName } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { cn } from "@/lib/utils";
 import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dialog";
@@ -33,6 +33,7 @@ type Props = {
     onPreviewNode: (nodeId: string) => void;
     onInsertAsset: (payload: InsertAssetPayload) => void;
     onTitleChange?: (nodeId: string, title: string) => void;
+    projectTitle?: string;
 };
 
 const NODE_TYPE_ICON: Record<string, typeof Square> = {
@@ -51,7 +52,7 @@ const STATUS_COLOR: Record<string, string> = {
     idle: "transparent",
 };
 
-export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onInsertAsset, onTitleChange }: Props) {
+export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onInsertAsset, onTitleChange, projectTitle }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [tab, setTab] = useState<PanelTab>("canvas");
@@ -107,7 +108,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
                 </div>
                 <div className="mt-2 min-h-0 flex-1 overflow-hidden">
                     {tab === "canvas" ? (
-                        <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} onTitleChange={onTitleChange} theme={theme} />
+                        <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} onTitleChange={onTitleChange} projectTitle={projectTitle} theme={theme} />
                     ) : tab === "assets" ? (
                         <CanvasAssetsTab onInsert={onInsertAsset} theme={theme} />
                     ) : (
@@ -146,6 +147,7 @@ function CanvasNodesTab({
     onFocusNode,
     onPreviewNode,
     onTitleChange,
+    projectTitle,
     theme,
 }: {
     nodes: CanvasNodeData[];
@@ -153,6 +155,7 @@ function CanvasNodesTab({
     onFocusNode: (nodeId: string) => void;
     onPreviewNode: (nodeId: string) => void;
     onTitleChange?: (nodeId: string, title: string) => void;
+    projectTitle?: string;
     theme: CanvasTheme;
 }) {
     const { message } = App.useApp();
@@ -231,7 +234,9 @@ function CanvasNodesTab({
         setExporting(true);
         const hide = message.loading(t("canvas.sidePanel.exporting"), 0);
         try {
-            await exportCanvasNodes(targets, t("canvas.sidePanel.exportName", { count: targets.length }));
+            const projectName = safeFileName(projectTitle?.trim() || t("canvas.title"));
+            const zipName = `${projectName}_${t("canvas.sidePanel.exportName", { count: targets.length })}`;
+            await exportCanvasNodes(targets, zipName);
             message.success(t("canvas.sidePanel.exported", { count: targets.length }));
             exitSelect();
         } catch (error) {
@@ -386,8 +391,11 @@ function CanvasNodesTab({
                         type="button"
                         onClick={() => void handleExport()}
                         disabled={!checked.size || exporting}
-                        className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10"
-                        style={{ color: theme.node.text }}
+                        className="ml-auto flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10"
+                        style={{
+                            color: checked.size ? theme.toolbar.activeText : theme.node.text,
+                            background: checked.size ? theme.toolbar.activeBg : "transparent",
+                        }}
                     >
                         <Download className="size-3.5" />
                         {t("canvas.exportSelected")}
@@ -400,8 +408,14 @@ function CanvasNodesTab({
 
 function CheckMark({ checked, theme }: { checked: boolean; theme: CanvasTheme }) {
     return (
-        <span className="grid size-4 shrink-0 place-items-center rounded border transition" style={{ borderColor: checked ? theme.toolbar.activeText : theme.node.stroke, background: checked ? theme.toolbar.activeText : "transparent" }}>
-            {checked ? <Check className="size-3 text-white" /> : null}
+        <span
+            className="grid size-4 shrink-0 place-items-center rounded border transition"
+            style={{
+                borderColor: checked ? theme.toolbar.activeText : theme.node.placeholder,
+                background: checked ? theme.toolbar.activeText : "transparent",
+            }}
+        >
+            {checked ? <Check className="size-3" style={{ color: theme.node.panel }} /> : null}
         </span>
     );
 }
@@ -413,12 +427,14 @@ function CheckMark({ checked, theme }: { checked: boolean; theme: CanvasTheme })
 const ASSET_GROUPS: { kind: AssetKind; icon: typeof Square }[] = [
     { kind: "image", icon: ImageIcon },
     { kind: "video", icon: Video },
+    { kind: "audio", icon: Music },
     { kind: "text", icon: FileText },
 ];
 
 function buildInsertPayload(asset: Asset): InsertAssetPayload {
     if (asset.kind === "text") return { kind: "text", content: asset.data.content, title: asset.title };
     if (asset.kind === "video") return { kind: "video", url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height };
+    if (asset.kind === "audio") return { kind: "audio", url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, durationMs: asset.data.durationMs };
     return { kind: "image", dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title };
 }
 
@@ -459,6 +475,10 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
                     const media = await uploadMediaFile(file, "video");
                     addAsset({ kind: "video", title: file.name || t("assets.kinds.video"), coverUrl: "", tags: [], data: { url: media.url, storageKey: media.storageKey, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType } });
                     added += 1;
+                } else if (file.type.startsWith("audio/")) {
+                    const media = await uploadMediaFile(file, "audio");
+                    addAsset({ kind: "audio", title: file.name || t("assets.kinds.audio"), coverUrl: "", tags: [], data: { url: media.url, storageKey: media.storageKey, bytes: media.bytes, mimeType: media.mimeType || "audio/mpeg", durationMs: media.durationMs } });
+                    added += 1;
                 }
             }
             if (added) message.success(t("canvas.sidePanel.addedAssets", { count: added }));
@@ -487,7 +507,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
                     <Plus className="size-3.5" />
                     {t("canvas.sidePanel.add")}
                 </button>
-                <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files)} />
+                <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files)} />
             </div>
             {allTags.length ? (
                 <div className="flex flex-wrap gap-1.5 px-3 pb-2">
@@ -539,8 +559,18 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
 
 function AssetCard({ asset, theme, onInsert, onRemove }: { asset: Asset; theme: CanvasTheme; onInsert: () => void; onRemove: () => void }) {
     const { t } = useTranslation();
+    const handleDragStart = (e: React.DragEvent) => {
+        e.dataTransfer.setData("application/infinite-canvas-asset", JSON.stringify(buildInsertPayload(asset)));
+        e.dataTransfer.effectAllowed = "copy";
+    };
     return (
-        <div className="group relative aspect-square overflow-hidden rounded-xl border transition duration-200 hover:-translate-y-0.5 hover:shadow-lg" style={{ borderColor: theme.node.stroke, background: theme.node.panel }}>
+        <div
+            draggable
+            onDragStart={handleDragStart}
+            className="group relative aspect-square cursor-grab overflow-hidden rounded-xl border transition duration-200 hover:-translate-y-0.5 hover:shadow-lg active:cursor-grabbing"
+            style={{ borderColor: theme.node.stroke, background: theme.node.panel }}
+            title={t("canvas.sidePanel.dragOrClickToInsert")}
+        >
             <AssetCover asset={asset} />
             <div className="absolute inset-0 flex items-center justify-center gap-2.5 opacity-0 transition duration-200 group-hover:opacity-100">
                 <button
@@ -570,6 +600,14 @@ function AssetCover({ asset }: { asset: Asset }) {
     if (asset.kind === "video") {
         if (asset.coverUrl) return <img src={asset.coverUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
         return <video src={`${asset.data.url}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
+    }
+    if (asset.kind === "audio") {
+        return (
+            <div className="flex size-full flex-col items-center justify-center gap-1.5 p-2 text-center text-stone-500 dark:text-stone-400">
+                <Music className="size-6 text-stone-400 dark:text-stone-500" />
+                <span className="line-clamp-2 text-[10px] leading-tight font-medium">{asset.title}</span>
+            </div>
+        );
     }
     return <img src={asset.coverUrl || asset.data.dataUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
 }
@@ -691,8 +729,17 @@ function PromptSourceGroup({
 
 function PromptRow({ item, theme, onInsert, onView }: { item: Prompt; theme: CanvasTheme; onInsert: () => void; onView: () => void }) {
     const { t } = useTranslation();
+    const handleDragStart = (e: React.DragEvent) => {
+        e.dataTransfer.setData("application/infinite-canvas-asset", JSON.stringify({ kind: "text", content: item.prompt, title: item.title }));
+        e.dataTransfer.effectAllowed = "copy";
+    };
     return (
-        <div className="group relative flex items-center gap-2.5 rounded-lg px-2 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
+        <div
+            draggable
+            onDragStart={handleDragStart}
+            className="group relative flex cursor-grab items-center gap-2.5 rounded-lg px-2 py-2 transition hover:bg-black/5 active:cursor-grabbing dark:hover:bg-white/5"
+            title={t("canvas.sidePanel.dragOrClickToInsert", "拖拽或点击插入画布")}
+        >
             {item.coverUrl ? (
                 <img src={item.coverUrl} alt="" className="size-10 shrink-0 rounded-md object-cover" loading="lazy" />
             ) : (

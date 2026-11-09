@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Image } from "antd";
-import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
+import { Image, Popconfirm } from "antd";
+import { FileText, Image as ImageIcon, Music2, Video, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
+import { cn } from "@/lib/utils";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { isImeComposing, isPlainEnterKey } from "@/lib/keyboard-event";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -16,8 +18,11 @@ type Props = {
     onChange: (value: string) => void;
     onSubmit?: () => void;
     className?: string;
+    containerClassName?: string;
     style?: CSSProperties;
     placeholder?: string;
+    allowClear?: boolean;
+    onClear?: () => void;
 };
 
 type MentionState = {
@@ -33,13 +38,15 @@ type Token =
 // Display labels stay localized, while the persisted value uses stable `@[node:<nodeId>]` tokens, so
 // serialization is independent of locale or label changes. Nodes that are missing or disconnected
 // keep their raw token as plain text instead of being dropped.
-export function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, style, placeholder }: Props) {
+export function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, containerClassName, style, placeholder, allowClear = true, onClear }: Props) {
+    const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
     // Track the last value emitted to the parent. An identical focused value is this component's own echo,
     // so skip rebuilding to preserve the caret and IME. Rebuild external changes even while focused.
     const lastEmittedRef = useRef(value);
+    const savedRangeRef = useRef<Range | null>(null);
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -59,7 +66,10 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     useEffect(() => {
         const editor = editorRef.current;
         if (!editor) return;
-        if (document.activeElement === editor && value === lastEmittedRef.current) return;
+        if (serializeEditor(editor) === value || (document.activeElement === editor && value === lastEmittedRef.current)) {
+            lastEmittedRef.current = value;
+            return;
+        }
         editor.textContent = "";
         tokens.forEach((token) => {
             if (token.type === "text") {
@@ -92,6 +102,10 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
             closeMention();
             return;
         }
+        const selection = window.getSelection();
+        if (selection?.rangeCount && editorRef.current?.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+            savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+        }
         setMention({ query: match[1] || "", rect: caretRect() });
         setActiveIndex(0);
     };
@@ -99,35 +113,62 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const closeMention = () => {
         setMention(null);
         setActiveIndex(0);
+        savedRangeRef.current = null;
     };
 
     const insertReference = (reference: CanvasResourceReference) => {
         const editor = editorRef.current;
         if (!editor) return;
-        removeActiveMention();
-        const chip = createReferenceChip(reference, theme, setImagePreview);
-        const space = document.createTextNode(" ");
         const selection = window.getSelection();
-        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-        if (range) {
-            range.insertNode(space);
-            range.insertNode(chip);
-            range.setStartAfter(space);
-            range.collapse(true);
+        let range: Range | null = null;
+        if (selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+            range = selection.getRangeAt(0);
+        } else if (savedRangeRef.current && editor.contains(savedRangeRef.current.commonAncestorContainer)) {
+            range = savedRangeRef.current;
             selection?.removeAllRanges();
             selection?.addRange(range);
+        }
+
+        removeActiveMention(range);
+        const chip = createReferenceChip(reference, theme, setImagePreview);
+        const space = document.createTextNode(" ");
+        const activeRange = selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+            ? selection.getRangeAt(0)
+            : range && editor.contains(range.commonAncestorContainer)
+            ? range
+            : null;
+
+        if (activeRange) {
+            activeRange.insertNode(space);
+            activeRange.insertNode(chip);
+            activeRange.setStartAfter(space);
+            activeRange.collapse(true);
+            selection?.removeAllRanges();
+            selection?.addRange(activeRange);
         } else {
             editor.append(chip, space);
             placeCaretAtEnd(editor);
         }
         closeMention();
         emit(serializeEditor(editor));
+        editor.focus();
+    };
+
+    const handleClear = () => {
+        emit("");
+        const editor = editorRef.current;
+        if (editor) {
+            editor.textContent = "";
+            editor.focus();
+        }
+        closeMention();
+        onClear?.();
     };
 
     const showPlaceholder = !value.trim();
 
     return (
-        <div className="relative w-full">
+        <div className={cn("relative w-full", containerClassName)}>
             {showPlaceholder && placeholder ? (
                 <div className="pointer-events-none select-none absolute left-3 top-2 whitespace-pre-line text-sm leading-5" style={{ color: theme.node.placeholder }}>
                     {placeholder}
@@ -139,7 +180,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                 suppressContentEditableWarning
                 role="textbox"
                 aria-multiline="true"
-                className={`${className || ""} overflow-y-auto whitespace-pre-wrap break-words outline-none`}
+                className={cn(className, allowClear && "pr-8", "overflow-y-auto whitespace-pre-wrap break-words outline-none")}
                 style={{ ...style, cursor: "text" }}
                 onInput={() => {
                     if (!composingRef.current) syncFromEditor();
@@ -188,8 +229,37 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                     }
                     requestAnimationFrame(syncMention);
                 }}
-                onBlur={() => window.setTimeout(closeMention, 120)}
+                onBlur={(event) => {
+                    if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest("[data-canvas-resource-mention-menu]")) {
+                        return;
+                    }
+                    window.setTimeout(closeMention, 120);
+                }}
             />
+            {allowClear && Boolean(value.trim()) ? (
+                <Popconfirm
+                    title={t("canvas.promptPanel.confirmClearTitle")}
+                    description={t("canvas.promptPanel.confirmClearDesc")}
+                    okText={t("canvas.promptPanel.confirmClearOk")}
+                    cancelText={t("canvas.promptPanel.confirmClearCancel")}
+                    okButtonProps={{ danger: true, size: "small" }}
+                    cancelButtonProps={{ size: "small" }}
+                    onConfirm={handleClear}
+                    placement="topRight"
+                >
+                    <button
+                        type="button"
+                        className="absolute right-2.5 top-2.5 z-10 flex size-5 cursor-pointer items-center justify-center rounded-full bg-transparent text-stone-400 opacity-70 transition hover:bg-black/5 hover:text-stone-700 hover:opacity-100 dark:hover:bg-white/10 dark:hover:text-stone-200"
+                        title={t("canvas.promptPanel.clearPrompt")}
+                        aria-label={t("canvas.promptPanel.clearPrompt")}
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <X className="size-3" />
+                    </button>
+                </Popconfirm>
+            ) : null}
             {mention && candidates.length ? (
                 <MentionMenu rect={mention.rect} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} />
             ) : null}
@@ -212,7 +282,10 @@ function MentionMenu({ rect, references, activeIndex, theme, onSelect }: { rect:
         onSelect(reference);
     };
 
-    const stopCanvasInteraction = (event: PointerEvent | MouseEvent) => event.stopPropagation();
+    const stopCanvasInteraction = (event: PointerEvent | MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+    };
 
     const menuWidth = 256;
     const maxMenuHeight = 224;
@@ -224,8 +297,10 @@ function MentionMenu({ rect, references, activeIndex, theme, onSelect }: { rect:
 
     return createPortal(
         <div
+            tabIndex={-1}
+            data-canvas-no-zoom="true"
             data-canvas-resource-mention-menu="true"
-            className="fixed z-[1100] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl backdrop-blur-md"
+            className="fixed z-[1100] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl backdrop-blur-md outline-none"
             style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onPointerDown={stopCanvasInteraction}
             onMouseDown={stopCanvasInteraction}
@@ -241,7 +316,10 @@ function MentionMenu({ rect, references, activeIndex, theme, onSelect }: { rect:
                     onPointerDown={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        selectReference(reference);
+                    }}
+                    onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
                     }}
                     onClick={(event) => {
                         event.preventDefault();
@@ -317,10 +395,20 @@ function serializeNodes(nodes: NodeListOf<ChildNode>) {
     return result;
 }
 
-function removeActiveMention() {
+function removeActiveMention(rangeOverride?: Range | null) {
     const selection = window.getSelection();
-    if (!selection?.rangeCount) return;
-    const range = selection.getRangeAt(0);
+    const range = rangeOverride || (selection?.rangeCount ? selection.getRangeAt(0) : null);
+    if (!range) return;
+    if (range.startContainer.nodeType === Node.TEXT_NODE) {
+        const textNode = range.startContainer as Text;
+        const beforeCaret = (textNode.textContent || "").slice(0, range.startOffset);
+        const lastAt = beforeCaret.lastIndexOf("@");
+        if (lastAt !== -1) {
+            range.setStart(textNode, lastAt);
+            range.deleteContents();
+            return;
+        }
+    }
     const text = textBeforeCaret();
     const match = /@([^\s@]*)$/.exec(text);
     if (!match) return;

@@ -1,0 +1,46 @@
+{
+  "1": {
+    "inputs": {
+      "file": "-9cIuz9x_ref_video_1.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "ref_video_01"
+    }
+  },
+  "2": {
+    "inputs": {
+      "target": "h3",
+      "quality": "full",
+      "invert": false,
+      "clip_percent": 0,
+      "gamma": 1,
+      "max_side": 0,
+      "video": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "ReShotDepthVideo",
+    "_meta": {
+      "title": "ReShot Depth Video"
+    }
+  },
+  "4": {
+    "inputs": {
+      "filename_prefix": "reshot/depth",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto",
+      "video": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "output_video"
+    }
+  }
+}

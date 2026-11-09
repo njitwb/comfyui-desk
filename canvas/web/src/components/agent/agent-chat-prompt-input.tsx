@@ -134,6 +134,7 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
             emit(serializeEditor(editor));
         }
         closeCommand();
+        editor.focus();
     };
 
     const handleCommandKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -245,9 +246,12 @@ function AgentCommandMenu({ command, candidates, activeIndex, loading, theme, on
     const { t } = useTranslation();
     const activeItemRef = useRef<HTMLButtonElement | null>(null);
     useEffect(() => { activeItemRef.current?.scrollIntoView({ block: "nearest" }); }, [activeIndex]);
-    const stopPropagation = (event: PointerEvent | MouseEvent) => event.stopPropagation();
+    const stopPropagation = (event: PointerEvent | MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+    };
     return (
-        <div data-agent-command-menu className="absolute bottom-[calc(100%+8px)] left-0 z-[120] w-full min-w-64 overflow-hidden rounded-xl border shadow-xl" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onPointerDown={stopPropagation} onMouseDown={stopPropagation}>
+        <div data-canvas-no-zoom="true" data-agent-command-menu className="absolute bottom-[calc(100%+8px)] left-0 z-[120] w-full min-w-64 overflow-hidden rounded-xl border shadow-xl" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onPointerDown={stopPropagation} onMouseDown={stopPropagation} onClick={(event) => event.stopPropagation()}>
             <div className="border-b px-3 py-2 text-xs" style={{ borderColor: theme.toolbar.border, color: theme.node.muted }}>
                 {t(command.type === "skill" ? "agent.composer.mentions.selectSkill" : "agent.composer.mentions.selectResource")}{command.query ? ` · ${command.query}` : ""}
             </div>
@@ -258,7 +262,26 @@ function AgentCommandMenu({ command, candidates, activeIndex, loading, theme, on
                     const title = skill ? skill.interface?.displayName || skill.name : reference?.title || "";
                     const description = skill ? skill.interface?.shortDescription || skill.shortDescription || skill.description : reference ? `${agentReferenceMarker(reference)} · ${canvasReferenceKindLabel(reference.kind)}` : "";
                     return (
-                        <button key={skill ? `${skill.name}:${skill.path}` : reference?.nodeId} ref={index === activeIndex ? activeItemRef : undefined} type="button" className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-black/5 dark:hover:bg-white/10" style={{ background: index === activeIndex ? theme.toolbar.activeBg : undefined, color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }} onPointerDown={(event) => { event.preventDefault(); onSelect(candidate); }}>
+                        <button
+                            key={skill ? `${skill.name}:${skill.path}` : reference?.nodeId}
+                            ref={index === activeIndex ? activeItemRef : undefined}
+                            type="button"
+                            className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-black/5 dark:hover:bg-white/10"
+                            style={{ background: index === activeIndex ? theme.toolbar.activeBg : undefined, color: index === activeIndex ? theme.toolbar.activeText : theme.node.text }}
+                            onPointerDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                            }}
+                            onMouseDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                            }}
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onSelect(candidate);
+                            }}
+                        >
                             {skill ? <span className="grid size-9 shrink-0 place-items-center"><Sparkles className="size-4" /></span> : reference ? <ReferencePreview reference={reference} /> : null}
                             <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{title}</span><span className="mt-0.5 block truncate text-xs" style={{ color: theme.node.muted }}>{description}</span></span>
                         </button>

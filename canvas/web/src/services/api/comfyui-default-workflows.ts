@@ -1,5 +1,7 @@
 import type { ComfyuiWorkflow, ComfyWorkflowItem } from "@/stores/use-config-store";
 
+export type { ComfyWorkflowItem };
+
 // Builtin channel workflows (unified for local and cloud ComfyUI instances)
 import t2iZImageTurboJson from "@/assets/workflows/t2i_z_image_turbo_api.json";
 import i2iFlux2DevJson from "@/assets/workflows/i2i_flux2_dev_api.json";
@@ -16,8 +18,15 @@ import frameVideoBf1620StepJson from "@/assets/workflows/video_minimax_h3_frame_
 import qwenImage21Json from "@/assets/workflows/qwen_image_21_api.json";
 import audioMinimaxMusic3Json from "@/assets/workflows/audio_minimax_music_3_api.json";
 import videoH3FaceRefineJson from "@/assets/workflows/video_h3_face_refine_api.json";
+import videoDepthReshotJson from "@/assets/workflows/video_depth_reshot_api.json";
 
 // Built-in single workflow definitions
+export const DEFAULT_BUILTIN_COMFYUI_DEPTH_VIDEO_WORKFLOW: ComfyuiWorkflow = {
+    name: "ReShot 深度视频提取",
+    json: videoDepthReshotJson as Record<string, unknown>,
+    createdAt: 0,
+    isBuiltin: true,
+};
 export const DEFAULT_BUILTIN_COMFYUI_FACE_REFINE_WORKFLOW: ComfyuiWorkflow = {
     name: "MiniMax H3 人脸修复",
     json: videoH3FaceRefineJson as Record<string, unknown>,
@@ -158,6 +167,7 @@ export type ComfyuiWorkflowBundle = {
     frameVideo: ComfyuiWorkflow;
     audio: ComfyuiWorkflow;
     faceRefine?: ComfyuiWorkflow;
+    depthVideo?: ComfyuiWorkflow;
 };
 
 export const DEFAULT_BUILTIN_COMFYUI_WORKFLOWS: ComfyuiWorkflowBundle = {
@@ -169,6 +179,7 @@ export const DEFAULT_BUILTIN_COMFYUI_WORKFLOWS: ComfyuiWorkflowBundle = {
     frameVideo: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW,
     audio: DEFAULT_BUILTIN_COMFYUI_AUDIO_WORKFLOW,
     faceRefine: DEFAULT_BUILTIN_COMFYUI_FACE_REFINE_WORKFLOW,
+    depthVideo: DEFAULT_BUILTIN_COMFYUI_DEPTH_VIDEO_WORKFLOW,
 };
 
 export const DEFAULT_LOCAL_COMFYUI_WORKFLOWS = DEFAULT_BUILTIN_COMFYUI_WORKFLOWS;
@@ -349,6 +360,16 @@ export function getDefaultComfyWorkflowItems(channel?: { id?: string; name?: str
             isBuiltin: true,
             isDefault: true,
             description: "MiniMax H3 视频人脸/小脸追踪精修工作流 (支持最多 9 张角色参考图与原视频局部脸部增强)",
+        },
+        {
+            id: `${prefix}-tool-depth-video-reshot`,
+            name: "ReShot 深度视频提取",
+            category: "depthVideo",
+            json: DEFAULT_BUILTIN_COMFYUI_DEPTH_VIDEO_WORKFLOW.json,
+            createdAt: 0,
+            isBuiltin: true,
+            isDefault: true,
+            description: "ReShot 单目视频时序连续深度估计工作流 (近白远黑深度视频，用于剥离演员与画风生成走位参考)",
         },
     ];
 }

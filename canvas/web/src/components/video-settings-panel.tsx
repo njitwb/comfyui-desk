@@ -49,7 +49,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const { t } = useTranslation();
     const videoMode = config.videoMode === "frame" ? "frame" : "omni";
     const rawSeconds = Number(config.videoSeconds);
-    const secondsNum = Math.min(15, Math.max(5, !rawSeconds || rawSeconds === 6 ? 5 : rawSeconds));
+    const secondsNum = Math.min(15, Math.max(1, Number.isFinite(rawSeconds) && rawSeconds > 0 ? rawSeconds : 5));
     const currentSize = normalizeVideoSizeValue(config.size);
     const { width: currentW, height: currentH, aspect, tier: selectedTier } = parseVideoSize(currentSize);
 
@@ -188,7 +188,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                     </div>
                     <div className="px-1 pt-1">
                         <Slider
-                            min={5}
+                            min={1}
                             max={15}
                             step={1}
                             value={secondsNum}
@@ -214,7 +214,7 @@ export function videoSizeLabel(value: string) {
 
 export function videoSecondsLabel(value: string) {
     const raw = Number(value);
-    const s = Math.min(15, Math.max(5, !raw || raw === 6 ? 5 : raw));
+    const s = Math.min(15, Math.max(1, Number.isFinite(raw) && raw > 0 ? raw : 5));
     return `${s}s`;
 }
 

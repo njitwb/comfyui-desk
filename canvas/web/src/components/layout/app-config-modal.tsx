@@ -223,6 +223,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
 
                                         const inpaintItem = getDefaultWorkflow(channel, "inpaint");
                                         const faceRefineItem = getDefaultWorkflow(channel, "faceRefine");
+                                        const depthVideoItem = getDefaultWorkflow(channel, "depthVideo");
 
                                         return (
                                             <div key={channel.id} className="rounded-lg border border-stone-200 p-4 dark:border-stone-800">
@@ -377,6 +378,20 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                                                 value={faceRefineItem || channel.comfyuiFaceRefineWorkflow || defaultWorkflows.faceRefine}
                                                                                 defaultWorkflow={defaultWorkflows.faceRefine}
                                                                                 isBuiltin={faceRefineItem ? Boolean(faceRefineItem.isBuiltin) : undefined}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div>
+                                                                        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                                                                            <span className="text-xs font-medium text-stone-600 dark:text-stone-400">{t("config.channelEditor.depthVideoWorkflowTitle")}</span>
+                                                                            <span className="text-[11px] text-stone-400">{t("config.channelEditor.depthVideoWorkflowDesc")}</span>
+                                                                        </div>
+                                                                        <div className="rounded-md border border-stone-100 bg-stone-50/50 p-2 dark:border-stone-800 dark:bg-stone-900/30">
+                                                                            <ComfyuiWorkflowEditor
+                                                                                value={depthVideoItem || channel.comfyuiDepthVideoWorkflow || defaultWorkflows.depthVideo}
+                                                                                defaultWorkflow={defaultWorkflows.depthVideo}
+                                                                                isBuiltin={depthVideoItem ? Boolean(depthVideoItem.isBuiltin) : undefined}
                                                                             />
                                                                         </div>
                                                                     </div>

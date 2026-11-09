@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { BetweenHorizontalStart, CheckSquare, FolderPlus, GalleryHorizontal, GalleryHorizontalEnd, Group, Maximize2, Plus, Trash2, Ungroup } from "lucide-react";
+import { BetweenHorizontalStart, CheckSquare, FolderPlus, GalleryHorizontal, GalleryHorizontalEnd, Group, Maximize2, Plus, Split, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -13,6 +13,7 @@ export function CanvasNodeContextMenu({
     canCaptureVideoFrame,
     isGroupNode,
     canGroupSelection,
+    canSplitBatchImages,
     onClose,
     onCaptureVideoFrame,
     onDuplicate,
@@ -22,11 +23,13 @@ export function CanvasNodeContextMenu({
     onSelectGroupChildren,
     onCaptureGroupNodes,
     onFitGroup,
+    onSplitBatchImages,
 }: {
     menu: ContextMenuState;
     canCaptureVideoFrame: boolean;
     isGroupNode?: boolean;
     canGroupSelection?: boolean;
+    canSplitBatchImages?: boolean;
     onClose: () => void;
     onCaptureVideoFrame: (position: VideoFramePosition) => void;
     onDuplicate: () => void;
@@ -36,6 +39,7 @@ export function CanvasNodeContextMenu({
     onSelectGroupChildren?: () => void;
     onCaptureGroupNodes?: () => void;
     onFitGroup?: () => void;
+    onSplitBatchImages?: () => void;
 }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -75,6 +79,9 @@ export function CanvasNodeContextMenu({
                     {onUngroup ? <MenuButton icon={<Ungroup className="size-4" />} label={`${t("canvas.node.ungroup")} (⇧⌘G)`} onClick={onUngroup} /> : null}
                     <div className="my-1 border-t" style={{ borderColor: theme.toolbar.border }} />
                 </>
+            ) : null}
+            {canSplitBatchImages && onSplitBatchImages ? (
+                <MenuButton icon={<Split className="size-4" />} label={t("canvas.node.splitBatchImages")} onClick={onSplitBatchImages} />
             ) : null}
             {menu.type === "node" ? <MenuButton icon={<Plus className="size-4" />} label={t("canvas.controls.duplicate")} onClick={onDuplicate} /> : null}
             <MenuButton icon={<Trash2 className="size-4" />} label={t("canvas.controls.delete")} onClick={onDelete} danger />

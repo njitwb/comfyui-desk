@@ -65,10 +65,9 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
 
     const insertReference = (reference: CanvasResourceReference) => {
         if (!mention) return;
-        const textarea = textareaRef.current;
-        const end = textarea?.selectionStart ?? value.length;
+        const matchLength = 1 + mention.query.length;
         const insertText = `${reference.label} `;
-        const next = `${value.slice(0, mention.start)}${insertText}${value.slice(end)}`;
+        const next = `${value.slice(0, mention.start)}${insertText}${value.slice(mention.start + matchLength)}`;
         closeMention();
         updateValue(next, mention.start + insertText.length);
     };
@@ -185,6 +184,9 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
                 }}
                 onBlur={(event) => {
                     setHasSelection(false);
+                    if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest("[data-canvas-resource-mention-menu]")) {
+                        return;
+                    }
                     window.setTimeout(closeMention, 120);
                     props.onBlur?.(event);
                 }}
@@ -233,6 +235,7 @@ function MentionMenu({ textarea, caretIndex, references, activeIndex, theme, onS
     const top = clamp(showAbove ? caretTop - gap - maxMenuHeight : caretTop + lineHeight + gap, boundary.top + 8, boundary.bottom - maxMenuHeight - 8);
 
     const stopCanvasInteraction = (event: PointerEvent | MouseEvent) => {
+        event.preventDefault();
         event.stopPropagation();
     };
     const selectReference = (reference: CanvasResourceReference) => {
@@ -243,8 +246,10 @@ function MentionMenu({ textarea, caretIndex, references, activeIndex, theme, onS
 
     return createPortal(
         <div
+            tabIndex={-1}
+            data-canvas-no-zoom="true"
             data-canvas-resource-mention-menu="true"
-            className="fixed z-[120] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl backdrop-blur-md"
+            className="fixed z-[120] max-h-56 w-64 overflow-y-auto rounded-xl border p-1 shadow-2xl backdrop-blur-md outline-none"
             style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onPointerDown={stopCanvasInteraction}
             onMouseDown={stopCanvasInteraction}
@@ -259,7 +264,10 @@ function MentionMenu({ textarea, caretIndex, references, activeIndex, theme, onS
                     onPointerDown={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        selectReference(reference);
+                    }}
+                    onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
                     }}
                     onClick={(event) => {
                         event.preventDefault();
