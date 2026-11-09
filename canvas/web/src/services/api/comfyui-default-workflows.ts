@@ -11,10 +11,14 @@ import omniVideoFp8Json from "@/assets/workflows/video_minimax_h3_omni_fp8_20ste
 import omniVideoFp84StepPdmdJson from "@/assets/workflows/video_minimax_h3_omni_fp8_4step_pdmd_api.json";
 import omniVideoBf16TurboJson from "@/assets/workflows/video_minimax_h3_omni_bf16_8step_turbo_api.json";
 import omniVideoBf1620StepJson from "@/assets/workflows/video_minimax_h3_omni_bf16_20step_api.json";
+import omniVideoInt8PdmdJson from "@/assets/workflows/video_minimax_h3_omni_int8_4step_pdmd_api.json";
+import omniVideoInt8PikaJson from "@/assets/workflows/video_minimax_h3_omni_int8_6step_pika_api.json";
 import frameVideoFp8Json from "@/assets/workflows/video_minimax_h3_frame_fp8_20step_api.json";
 import frameVideoFp84StepPdmdJson from "@/assets/workflows/video_minimax_h3_frame_fp8_4step_pdmd_api.json";
 import frameVideoBf16TurboJson from "@/assets/workflows/video_minimax_h3_frame_bf16_8step_turbo_api.json";
 import frameVideoBf1620StepJson from "@/assets/workflows/video_minimax_h3_frame_bf16_20step_api.json";
+import frameVideoInt8PdmdJson from "@/assets/workflows/video_minimax_h3_frame_int8_4step_pdmd_api.json";
+import frameVideoInt8PikaJson from "@/assets/workflows/video_minimax_h3_frame_int8_6step_pika_api.json";
 import qwenImage21Json from "@/assets/workflows/qwen_image_21_api.json";
 import audioMinimaxMusic3Json from "@/assets/workflows/audio_minimax_music_3_api.json";
 import videoH3FaceRefineJson from "@/assets/workflows/video_h3_face_refine_api.json";
@@ -67,7 +71,7 @@ export const DEFAULT_BUILTIN_COMFYUI_TEXT_WORKFLOW: ComfyuiWorkflow = {
     isBuiltin: true,
 };
 
-export const DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW: ComfyuiWorkflow = {
+export const DEFAULT_BUILTIN_COMFYUI_VIDEO_20STEP_WORKFLOW: ComfyuiWorkflow = {
     name: "MiniMax H3 全能参考 (FP8 20步)",
     json: omniVideoFp8Json as Record<string, unknown>,
     createdAt: 0,
@@ -77,6 +81,22 @@ export const DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW: ComfyuiWorkflow = {
 export const DEFAULT_BUILTIN_COMFYUI_VIDEO_PDMD_WORKFLOW: ComfyuiWorkflow = {
     name: "MiniMax H3 全能视频 (FP8 4步 PDMD)",
     json: omniVideoFp84StepPdmdJson as Record<string, unknown>,
+    createdAt: 0,
+    isBuiltin: true,
+};
+
+export const DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW: ComfyuiWorkflow = DEFAULT_BUILTIN_COMFYUI_VIDEO_PDMD_WORKFLOW;
+
+export const DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PDMD_WORKFLOW: ComfyuiWorkflow = {
+    name: "MiniMax H3 全能视频 (INT8 4步 PDMD)",
+    json: omniVideoInt8PdmdJson as Record<string, unknown>,
+    createdAt: 0,
+    isBuiltin: true,
+};
+
+export const DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PIKA_WORKFLOW: ComfyuiWorkflow = {
+    name: "MiniMax H3 全能视频 (INT8 6步 Pika)",
+    json: omniVideoInt8PikaJson as Record<string, unknown>,
     createdAt: 0,
     isBuiltin: true,
 };
@@ -95,7 +115,7 @@ export const DEFAULT_BUILTIN_COMFYUI_VIDEO_BF16_20STEP_WORKFLOW: ComfyuiWorkflow
     isBuiltin: true,
 };
 
-export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW: ComfyuiWorkflow = {
+export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_20STEP_WORKFLOW: ComfyuiWorkflow = {
     name: "MiniMax H3 首尾帧 (FP8 20步)",
     json: frameVideoFp8Json as Record<string, unknown>,
     createdAt: 0,
@@ -105,6 +125,22 @@ export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW: ComfyuiWorkflow = {
 export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_PDMD_WORKFLOW: ComfyuiWorkflow = {
     name: "MiniMax H3 首尾帧视频 (FP8 4步 PDMD)",
     json: frameVideoFp84StepPdmdJson as Record<string, unknown>,
+    createdAt: 0,
+    isBuiltin: true,
+};
+
+export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW: ComfyuiWorkflow = DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_PDMD_WORKFLOW;
+
+export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PDMD_WORKFLOW: ComfyuiWorkflow = {
+    name: "MiniMax H3 首尾帧视频 (INT8 4步 PDMD)",
+    json: frameVideoInt8PdmdJson as Record<string, unknown>,
+    createdAt: 0,
+    isBuiltin: true,
+};
+
+export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PIKA_WORKFLOW: ComfyuiWorkflow = {
+    name: "MiniMax H3 首尾帧视频 (INT8 6步 Pika)",
+    json: frameVideoInt8PikaJson as Record<string, unknown>,
     createdAt: 0,
     isBuiltin: true,
 };
@@ -137,10 +173,55 @@ export const DEFAULT_COMFYUI_INPAINT_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_INPAINT_
 export const DEFAULT_COMFYUI_TEXT_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_TEXT_WORKFLOW;
 export const DEFAULT_COMFYUI_VIDEO_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW;
 export const DEFAULT_COMFYUI_VIDEO_PDMD_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_VIDEO_PDMD_WORKFLOW;
+export const DEFAULT_COMFYUI_VIDEO_INT8_PDMD_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PDMD_WORKFLOW;
+export const DEFAULT_COMFYUI_VIDEO_INT8_PIKA_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PIKA_WORKFLOW;
 export const DEFAULT_COMFYUI_FRAME_VIDEO_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW;
 export const DEFAULT_COMFYUI_FRAME_VIDEO_PDMD_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_PDMD_WORKFLOW;
+export const DEFAULT_COMFYUI_FRAME_VIDEO_INT8_PDMD_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PDMD_WORKFLOW;
+export const DEFAULT_COMFYUI_FRAME_VIDEO_INT8_PIKA_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PIKA_WORKFLOW;
 export const DEFAULT_COMFYUI_AUDIO_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_AUDIO_WORKFLOW;
 export const DEFAULT_COMFYUI_FACE_REFINE_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_FACE_REFINE_WORKFLOW;
+
+/**
+ * 根据模型 Profile ID 匹配精准对齐的系统内置工作流模板
+ */
+export function getWorkflowForModelProfile(modelId?: string): ComfyuiWorkflow | undefined {
+    if (!modelId) return undefined;
+    switch (modelId) {
+        case "omni-video-minimax-h3-fp8-4step-pdmd":
+        case "video_minimax_h3_omni":
+            return DEFAULT_BUILTIN_COMFYUI_VIDEO_PDMD_WORKFLOW;
+        case "omni-video-minimax-h3-fp8":
+            return DEFAULT_BUILTIN_COMFYUI_VIDEO_20STEP_WORKFLOW;
+        case "omni-video-minimax-h3-int8-4step-pdmd":
+            return DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PDMD_WORKFLOW;
+        case "omni-video-minimax-h3-int8-6step-pika":
+            return DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PIKA_WORKFLOW;
+        case "frame-video-minimax-h3-fp8-4step-pdmd":
+        case "video_minimax_h3_frame":
+            return DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_PDMD_WORKFLOW;
+        case "frame-video-minimax-h3-fp8":
+            return DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_20STEP_WORKFLOW;
+        case "frame-video-minimax-h3-int8-4step-pdmd":
+            return DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PDMD_WORKFLOW;
+        case "frame-video-minimax-h3-int8-6step-pika":
+            return DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PIKA_WORKFLOW;
+        case "image-qwen-2.1":
+            return DEFAULT_BUILTIN_COMFYUI_QWEN_IMAGE_21_WORKFLOW;
+        case "image-z-turbo":
+            return DEFAULT_BUILTIN_COMFYUI_T2I_WORKFLOW;
+        case "image-flux2-dev":
+            return DEFAULT_BUILTIN_COMFYUI_I2I_WORKFLOW;
+        case "image-qwen-inpaint":
+            return DEFAULT_BUILTIN_COMFYUI_INPAINT_WORKFLOW;
+        case "text-qwen-35":
+            return DEFAULT_COMFYUI_TEXT_WORKFLOW;
+        case "audio-minimax-music-3":
+            return DEFAULT_BUILTIN_COMFYUI_AUDIO_WORKFLOW;
+        default:
+            return undefined;
+    }
+}
 
 // Backward-compatible local aliases
 export const DEFAULT_LOCAL_COMFYUI_T2I_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_T2I_WORKFLOW;
@@ -262,84 +343,84 @@ export function getDefaultComfyWorkflowItems(channel?: { id?: string; name?: str
             description: "Qwen3.5 4B 本地端侧提示词扩写与视觉反推工作流",
         },
         {
-            id: `${prefix}-omni-video-minimax-h3-fp8`,
-            name: "MiniMax H3 全能视频 (FP8 20步)",
-            category: "omniVideo",
-            json: DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW.json,
-            createdAt: 0,
-            isBuiltin: true,
-            isDefault: true,
-            description: "MiniMax H3 全能参考视频 (FP8 Scaled, 适合消费级单卡)",
-        },
-        {
             id: `${prefix}-omni-video-minimax-h3-fp8-4step-pdmd`,
-            name: "MiniMax H3 全能视频 (FP8 4步 PDMD)",
+            name: "MiniMax H3 全能 (FP8 4步 PDMD)",
             category: "omniVideo",
             json: DEFAULT_BUILTIN_COMFYUI_VIDEO_PDMD_WORKFLOW.json,
             createdAt: 0,
             isBuiltin: true,
-            isDefault: false,
+            isDefault: true,
             description: "MiniMax H3 全能参考视频极速版 (FP8 4步 PDMD, 集成 EasyCache 特征缓存)",
         },
         {
-            id: `${prefix}-omni-video-minimax-h3-bf16-turbo`,
-            name: "MiniMax H3 全能视频 (BF16 8步 Turbo)",
+            id: `${prefix}-omni-video-minimax-h3-fp8`,
+            name: "MiniMax H3 全能 (FP8 20步)",
             category: "omniVideo",
-            json: DEFAULT_BUILTIN_COMFYUI_VIDEO_TURBO_WORKFLOW.json,
+            json: DEFAULT_BUILTIN_COMFYUI_VIDEO_20STEP_WORKFLOW.json,
             createdAt: 0,
             isBuiltin: true,
             isDefault: false,
-            description: "MiniMax H3 全能参考视频极速版 (BF16 Turbo 8步, 适合大显存高性能显卡)",
-        },
-        {
-            id: `${prefix}-omni-video-minimax-h3-bf16-20step`,
-            name: "MiniMax H3 全能视频 (BF16 20步)",
-            category: "omniVideo",
-            json: DEFAULT_BUILTIN_COMFYUI_VIDEO_BF16_20STEP_WORKFLOW.json,
-            createdAt: 0,
-            isBuiltin: true,
-            isDefault: false,
-            description: "MiniMax H3 全能参考视频高精版 (BF16 20步, 完整精度采样，画质上限最高)",
-        },
-        {
-            id: `${prefix}-frame-video-minimax-h3-fp8`,
-            name: "MiniMax H3 首尾帧视频 (FP8 20步)",
-            category: "frameVideo",
-            json: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW.json,
-            createdAt: 0,
-            isBuiltin: true,
-            isDefault: true,
-            description: "MiniMax H3 首尾帧插值视频 (FP8 Scaled, 适合消费级单卡)",
+            description: "MiniMax H3 全能参考视频 (FP8 Scaled, 适合消费级单卡)",
         },
         {
             id: `${prefix}-frame-video-minimax-h3-fp8-4step-pdmd`,
-            name: "MiniMax H3 首尾帧视频 (FP8 4步 PDMD)",
+            name: "MiniMax H3 首尾帧 (FP8 4步 PDMD)",
             category: "frameVideo",
             json: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_PDMD_WORKFLOW.json,
             createdAt: 0,
             isBuiltin: true,
-            isDefault: false,
+            isDefault: true,
             description: "MiniMax H3 首尾帧插值视频极速版 (FP8 4步 PDMD, 仅需 4 步极速出片)",
         },
         {
-            id: `${prefix}-frame-video-minimax-h3-bf16-turbo`,
-            name: "MiniMax H3 首尾帧视频 (BF16 8步 Turbo)",
+            id: `${prefix}-frame-video-minimax-h3-fp8`,
+            name: "MiniMax H3 首尾帧 (FP8 20步)",
             category: "frameVideo",
-            json: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_TURBO_WORKFLOW.json,
+            json: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_20STEP_WORKFLOW.json,
             createdAt: 0,
             isBuiltin: true,
             isDefault: false,
-            description: "MiniMax H3 首尾帧插值视频极速版 (BF16 Turbo 8步, 适合大显存高性能显卡)",
+            description: "MiniMax H3 首尾帧插值视频 (FP8 Scaled, 适合消费级单卡)",
         },
         {
-            id: `${prefix}-frame-video-minimax-h3-bf16-20step`,
-            name: "MiniMax H3 首尾帧视频 (BF16 20步)",
-            category: "frameVideo",
-            json: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_BF16_20STEP_WORKFLOW.json,
+            id: `${prefix}-omni-video-minimax-h3-int8-4step-pdmd`,
+            name: "MiniMax H3 全能 (INT8 4步 PDMD)",
+            category: "omniVideo",
+            json: DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PDMD_WORKFLOW.json,
             createdAt: 0,
             isBuiltin: true,
             isDefault: false,
-            description: "MiniMax H3 首尾帧插值视频高精版 (BF16 20步, 完整精度采样，动态演化更平滑)",
+            description: "MiniMax H3 全能参考视频 (INT8 旋转量化底模 + 4步 PDMD + EasyCache, 无需 FP8 硬件加速)",
+        },
+        {
+            id: `${prefix}-frame-video-minimax-h3-int8-4step-pdmd`,
+            name: "MiniMax H3 首尾帧 (INT8 4步 PDMD)",
+            category: "frameVideo",
+            json: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PDMD_WORKFLOW.json,
+            createdAt: 0,
+            isBuiltin: true,
+            isDefault: false,
+            description: "MiniMax H3 首尾帧插值视频 (INT8 旋转量化底模 + 4步 PDMD, 无需 FP8 硬件加速)",
+        },
+        {
+            id: `${prefix}-omni-video-minimax-h3-int8-6step-pika`,
+            name: "MiniMax H3 全能 (INT8 6步 Pika)",
+            category: "omniVideo",
+            json: DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_PIKA_WORKFLOW.json,
+            createdAt: 0,
+            isBuiltin: true,
+            isDefault: false,
+            description: "MiniMax H3 全能参考视频 (INT8 旋转量化底模 + Pika Flex 6步蒸馏 LoRA + EasyCache)",
+        },
+        {
+            id: `${prefix}-frame-video-minimax-h3-int8-6step-pika`,
+            name: "MiniMax H3 首尾帧 (INT8 6步 Pika)",
+            category: "frameVideo",
+            json: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_INT8_PIKA_WORKFLOW.json,
+            createdAt: 0,
+            isBuiltin: true,
+            isDefault: false,
+            description: "MiniMax H3 首尾帧插值视频 (INT8 旋转量化底模 + Pika Flex 6步蒸馏 LoRA)",
         },
         {
             id: `${prefix}-audio-minimax-music-3`,

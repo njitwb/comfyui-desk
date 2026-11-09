@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { App, Empty, Input, Popconfirm, Select, Spin, Tag } from "antd";
+import { App, Empty, Input, Popconfirm, Segmented, Select, Spin, Tag } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
@@ -20,6 +20,8 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 import type { InsertAssetPayload } from "./asset-picker-modal";
+import { SystemPresetGallery } from "@/components/assets/system-preset-gallery";
+import type { SystemPresetCategory } from "@/lib/assets/system-presets";
 
 const PANEL_MOTION_SECONDS = CANVAS_SIDE_PANEL_MOTION_MS / 1000;
 const PANEL_EASE = [0.22, 1, 0.36, 1] as const;
@@ -439,6 +441,38 @@ function buildInsertPayload(asset: Asset): InsertAssetPayload {
 }
 
 const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
+    const { t } = useTranslation();
+    const [assetSource, setAssetSource] = useState<"system" | "user">("system");
+    const [presetCategory, setPresetCategory] = useState<SystemPresetCategory>("pose");
+
+    return (
+        <div className="flex h-full flex-col">
+            <div className="px-3 pb-2 pt-1">
+                <Segmented
+                    size="small"
+                    block
+                    value={assetSource}
+                    onChange={(val) => setAssetSource(val as "system" | "user")}
+                    options={[
+                        { label: t("canvas.sidePanel.systemAssets"), value: "system" },
+                        { label: t("canvas.sidePanel.myAssets"), value: "user" },
+                    ]}
+                />
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+                {assetSource === "system" ? (
+                    <div className="flex h-full flex-col px-3 pb-2 pt-1">
+                        <SystemPresetGallery category={presetCategory} onCategoryChange={setPresetCategory} onInsert={onInsert} variant="panel" canvasTheme={theme} />
+                    </div>
+                ) : (
+                    <UserAssetsSection onInsert={onInsert} theme={theme} />
+                )}
+            </div>
+        </div>
+    );
+});
+
+function UserAssetsSection({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
     const { message } = App.useApp();
     const { t } = useTranslation();
     const assets = useAssetStore((state) => state.assets);
@@ -555,7 +589,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
             </div>
         </div>
     );
-});
+}
 
 function AssetCard({ asset, theme, onInsert, onRemove }: { asset: Asset; theme: CanvasTheme; onInsert: () => void; onRemove: () => void }) {
     const { t } = useTranslation();

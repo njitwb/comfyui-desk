@@ -1,4 +1,5 @@
 import { Select } from "antd";
+import type { DefaultOptionType } from "antd/es/select";
 import { useEffect, useMemo } from "react";
 import { Server, Workflow } from "lucide-react";
 
@@ -143,7 +144,7 @@ export function ChannelWorkflowPicker({
                     ),
                 })),
             }));
-    }, [category, workflows]);
+    }, [category, workflows]) as DefaultOptionType[];
 
     if (!channels.length) {
         return (

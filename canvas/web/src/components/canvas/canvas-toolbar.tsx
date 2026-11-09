@@ -1,7 +1,7 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
-import { CircleDot, Eraser, Grid2x2, Group, Hand, Image as ImageIcon, Info, Moon, MousePointer2, Music2, Palette, Puzzle, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { CircleDot, Eraser, Grid2x2, Group, Hand, Image as ImageIcon, Info, Moon, MousePointer2, Music2, Palette, Puzzle, Redo2, RotateCw, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { getNodePluginId, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 
 export function CanvasToolbar({
     selectedCount,
+    interruptedSelectedCount = 0,
     canvasTool,
     canUndo,
     canRedo,
@@ -28,11 +29,13 @@ export function CanvasToolbar({
     onUpload,
     onDelete,
     onClear,
+    onRetryInterrupted,
     onCanvasToolChange,
     onBackgroundModeChange,
     onShowImageInfoChange,
 }: {
     selectedCount: number;
+    interruptedSelectedCount?: number;
     canvasTool: "select" | "pan";
     canUndo: boolean;
     canRedo: boolean;
@@ -50,6 +53,7 @@ export function CanvasToolbar({
     onUpload: () => void;
     onDelete: () => void;
     onClear: () => void;
+    onRetryInterrupted?: () => void;
     onCanvasToolChange: (tool: "select" | "pan") => void;
     onBackgroundModeChange: (mode: CanvasBackgroundMode) => void;
     onShowImageInfoChange: (show: boolean) => void;
@@ -161,6 +165,23 @@ export function CanvasToolbar({
                 >
                     <Palette className="size-4.5" />
                 </ToolbarButton>
+                {interruptedSelectedCount ? (
+                    <>
+                        <Divider theme={theme} />
+                        <ToolbarButton
+                            id="tool-retry-interrupted"
+                            label={t("canvas.toolbar.retrySelectedInterrupted")}
+                            hovered={hovered}
+                            hoverStyle={hoverStyle}
+                            wrapRef={wrapRef}
+                            onTipX={setTipX}
+                            onHover={setHovered}
+                            onClick={onRetryInterrupted}
+                        >
+                            <RotateCw className="size-4.5" />
+                        </ToolbarButton>
+                    </>
+                ) : null}
                 {selectedCount ? (
                     <>
                         <Divider theme={theme} />
@@ -365,6 +386,7 @@ function toolLabel(id: string, t: (key: string) => string) {
     if (id === "tool-extensions") return t("canvas.toolbar.extensions");
     if (id === "tool-upload") return t("canvas.toolbar.upload");
     if (id === "tool-style") return t("canvas.toolbar.appearance");
+    if (id === "tool-retry-interrupted") return t("canvas.toolbar.retrySelectedInterrupted");
     if (id === "tool-delete") return t("canvas.deleteSelected");
     if (id === "tool-clear") return t("canvas.toolbar.clear");
     return "";

@@ -1,4 +1,7 @@
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ConnectionHandle } from "@/types/canvas";
+import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type ConnectionHandle, type Position } from "@/types/canvas";
+import { getModelProfile, imageQwen21Profile, textQwen35Profile, videoMinimaxH3OmniProfile } from "@/services/api/models";
+import { getGroupResourceNodes } from "@/lib/canvas/canvas-resource-references";
+import { getNodeDefinition } from "@/lib/canvas/node-registry";
 
 export function nodeBounds(nodes: CanvasNodeData[]) {
     return nodes.reduce(
@@ -56,11 +59,96 @@ export function findContainingGroupId(node: CanvasNodeData, nodes: CanvasNodeDat
     );
 }
 
+export const CANVAS_HANDLE_OFFSET = 12;
+
+export type CubicBezierCurve = [Position, Position, Position, Position];
+
+export function getCubicBezierPoint(curve: CubicBezierCurve, t: number): Position {
+    const [p0, p1, p2, p3] = curve;
+    const oneMinusT = 1 - t;
+    const oneMinusT2 = oneMinusT * oneMinusT;
+    const oneMinusT3 = oneMinusT2 * oneMinusT;
+    const t2 = t * t;
+    const t3 = t2 * t;
+
+    return {
+        x: oneMinusT3 * p0.x + 3 * oneMinusT2 * t * p1.x + 3 * oneMinusT * t2 * p2.x + t3 * p3.x,
+        y: oneMinusT3 * p0.y + 3 * oneMinusT2 * t * p1.y + 3 * oneMinusT * t2 * p2.y + t3 * p3.y,
+    };
+}
+
+export function findClosestPointOnCubicBezier(curve: CubicBezierCurve, point: Position, samples = 36): Position {
+    let minD2 = Infinity;
+    let bestT = 0.5;
+
+    for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const pt = getCubicBezierPoint(curve, t);
+        const d2 = (pt.x - point.x) ** 2 + (pt.y - point.y) ** 2;
+        if (d2 < minD2) {
+            minD2 = d2;
+            bestT = t;
+        }
+    }
+
+    let left = Math.max(0, bestT - 1 / samples);
+    let right = Math.min(1, bestT + 1 / samples);
+    for (let iter = 0; iter < 5; iter++) {
+        const mid1 = left + (right - left) / 3;
+        const mid2 = right - (right - left) / 3;
+        const pt1 = getCubicBezierPoint(curve, mid1);
+        const pt2 = getCubicBezierPoint(curve, mid2);
+        const d1 = (pt1.x - point.x) ** 2 + (pt1.y - point.y) ** 2;
+        const d2 = (pt2.x - point.x) ** 2 + (pt2.y - point.y) ** 2;
+        if (d1 < d2) {
+            right = mid2;
+        } else {
+            left = mid1;
+        }
+    }
+
+    return getCubicBezierPoint(curve, (left + right) / 2);
+}
+
 export function getConnectionTargetAnchor(node: CanvasNodeData, current: ConnectionHandle) {
     return {
-        x: current.handleType === "source" ? node.position.x : node.position.x + node.width,
+        x: current.handleType === "source" ? node.position.x - CANVAS_HANDLE_OFFSET : node.position.x + node.width + CANVAS_HANDLE_OFFSET,
         y: node.position.y + node.height / 2,
     };
+}
+
+export type NodeResourceCounts = {
+    images: number;
+    videos: number;
+    audios: number;
+};
+
+export function getNodeResourceCounts(node: CanvasNodeData, allNodes: CanvasNodeData[]): NodeResourceCounts {
+    if (node.type === CanvasNodeType.Group) {
+        const children = getGroupResourceNodes(node.id, allNodes);
+        return children.reduce(
+            (acc, child) => {
+                const c = getNodeResourceCounts(child, allNodes);
+                return {
+                    images: acc.images + c.images,
+                    videos: acc.videos + c.videos,
+                    audios: acc.audios + c.audios,
+                };
+            },
+            { images: 0, videos: 0, audios: 0 },
+        );
+    }
+
+    if (node.type === CanvasNodeType.Image) return { images: 1, videos: 0, audios: 0 };
+    if (node.type === CanvasNodeType.Video) return { images: 0, videos: 1, audios: 0 };
+    if (node.type === CanvasNodeType.Audio) return { images: 0, videos: 0, audios: 1 };
+
+    const res = getNodeDefinition(node.type)?.resource?.(node);
+    if (res?.kind === "image") return { images: 1, videos: 0, audios: 0 };
+    if (res?.kind === "video") return { images: 0, videos: 1, audios: 0 };
+    if (res?.kind === "audio") return { images: 0, videos: 0, audios: 1 };
+
+    return { images: 0, videos: 0, audios: 0 };
 }
 
 export function validateInputConnection(
@@ -76,7 +164,255 @@ export function validateInputConnection(
     if (toNode.type === CanvasNodeType.Group) return null;
     if (fromNode.type === CanvasNodeType.Config) return null;
     if (connections.some((connection) => connection.fromNodeId === fromNodeId && connection.toNodeId === toNodeId)) return null;
+
+    // 针对绑定了模型 DSL 的节点进行配额与多模态类型边界校验
+    const modelId = toNode.metadata?.modelId || toNode.metadata?.videoMode || toNode.metadata?.model;
+    const profile = getModelProfile(modelId) || (
+        toNode.type === CanvasNodeType.Video
+            ? videoMinimaxH3OmniProfile
+            : toNode.type === CanvasNodeType.Image
+            ? imageQwen21Profile
+            : toNode.type === CanvasNodeType.Text
+            ? textQwen35Profile
+            : undefined
+    );
+
+    if (profile?.capabilityConfig.references) {
+        const refs = profile.capabilityConfig.references;
+        const incoming = getNodeResourceCounts(fromNode, nodes);
+
+        // 严格拦截当前模型不支持的媒体类型
+        if ((refs.maxImages ?? 0) === 0 && incoming.images > 0) return null;
+        if ((refs.maxVideos ?? 0) === 0 && incoming.videos > 0) return null;
+        if ((refs.maxAudios ?? 0) === 0 && incoming.audios > 0) return null;
+
+        // 统计当前节点既有连线占用的资源配额
+        const existingConnections = connections.filter(
+            (c) => c.toNodeId === toNodeId && c.kind === "input" && c.fromNodeId !== fromNodeId,
+        );
+        let existingImages = 0;
+        let existingVideos = 0;
+        let existingAudios = 0;
+
+        for (const conn of existingConnections) {
+            const src = nodes.find((n) => n.id === conn.fromNodeId);
+            if (!src) continue;
+            const counts = getNodeResourceCounts(src, nodes);
+            existingImages += counts.images;
+            existingVideos += counts.videos;
+            existingAudios += counts.audios;
+        }
+
+        if (refs.maxImages !== undefined && existingImages + incoming.images > refs.maxImages) {
+            return null;
+        }
+        if (refs.maxVideos !== undefined && existingVideos + incoming.videos > refs.maxVideos) {
+            return null;
+        }
+        if (refs.maxAudios !== undefined && existingAudios + incoming.audios > refs.maxAudios) {
+            return null;
+        }
+    }
+
     return { fromNodeId, toNodeId };
+}
+
+export type ConnectionRejectionDetail = {
+    key:
+        | "connectionAlreadyExists"
+        | "connectionMediaTypeUnsupported"
+        | "connectionQuotaImagesExceeded"
+        | "connectionQuotaVideosExceeded"
+        | "connectionQuotaAudiosExceeded"
+        | "connectionQuotaExceeded";
+    params?: { max?: number; current?: number; incoming?: number };
+    defaultMessage: string;
+};
+
+/**
+ * 诊断连线被拒绝的具体原因（用于向用户输出友好的诊断提示）
+ */
+export function getConnectionRejectionDetail(
+    fromNodeId: string,
+    toNodeId: string,
+    nodes: CanvasNodeData[],
+    connections: CanvasConnection[] = [],
+): ConnectionRejectionDetail | null {
+    const fromNode = nodes.find((node) => node.id === fromNodeId);
+    const toNode = nodes.find((node) => node.id === toNodeId);
+    if (!fromNode || !toNode || fromNodeId === toNodeId || toNode.type === CanvasNodeType.Group || fromNode.type === CanvasNodeType.Config) {
+        return null;
+    }
+
+    if (connections.some((connection) => connection.fromNodeId === fromNodeId && connection.toNodeId === toNodeId)) {
+        return {
+            key: "connectionAlreadyExists",
+            defaultMessage: "连接已存在",
+        };
+    }
+
+    const modelId = toNode.metadata?.modelId || toNode.metadata?.videoMode || toNode.metadata?.model;
+    const profile = getModelProfile(modelId) || (
+        toNode.type === CanvasNodeType.Video
+            ? videoMinimaxH3OmniProfile
+            : toNode.type === CanvasNodeType.Image
+            ? imageQwen21Profile
+            : toNode.type === CanvasNodeType.Text
+            ? textQwen35Profile
+            : undefined
+    );
+
+    if (profile?.capabilityConfig.references) {
+        const refs = profile.capabilityConfig.references;
+        const incoming = getNodeResourceCounts(fromNode, nodes);
+
+        if ((refs.maxImages ?? 0) === 0 && incoming.images > 0) {
+            return {
+                key: "connectionMediaTypeUnsupported",
+                defaultMessage: profile.capability === "text"
+                    ? "连接被拒绝：该模型不支持连入参考图片"
+                    : "连接被拒绝：当前模型不支持参考图",
+            };
+        }
+        if ((refs.maxVideos ?? 0) === 0 && incoming.videos > 0) {
+            return {
+                key: "connectionMediaTypeUnsupported",
+                defaultMessage: "连接被拒绝：当前模型不支持参考视频",
+            };
+        }
+        if ((refs.maxAudios ?? 0) === 0 && incoming.audios > 0) {
+            return {
+                key: "connectionMediaTypeUnsupported",
+                defaultMessage: "连接被拒绝：当前模型不支持参考音频",
+            };
+        }
+
+        const existingConnections = connections.filter(
+            (c) => c.toNodeId === toNodeId && c.kind === "input" && c.fromNodeId !== fromNodeId,
+        );
+        let existingImages = 0;
+        let existingVideos = 0;
+        let existingAudios = 0;
+
+        for (const conn of existingConnections) {
+            const src = nodes.find((n) => n.id === conn.fromNodeId);
+            if (!src) continue;
+            const counts = getNodeResourceCounts(src, nodes);
+            existingImages += counts.images;
+            existingVideos += counts.videos;
+            existingAudios += counts.audios;
+        }
+
+        if (refs.maxImages !== undefined && existingImages + incoming.images > refs.maxImages) {
+            return {
+                key: "connectionQuotaImagesExceeded",
+                params: { max: refs.maxImages, current: existingImages, incoming: incoming.images },
+                defaultMessage: `连接被拒绝：超出参考图上限（该模型最多支持 ${refs.maxImages} 张，当前已有 ${existingImages} 张）`,
+            };
+        }
+        if (refs.maxVideos !== undefined && existingVideos + incoming.videos > refs.maxVideos) {
+            return {
+                key: "connectionQuotaVideosExceeded",
+                params: { max: refs.maxVideos, current: existingVideos, incoming: incoming.videos },
+                defaultMessage: `连接被拒绝：超出参考视频上限（该模型最多支持 ${refs.maxVideos} 个，当前已有 ${existingVideos} 个）`,
+            };
+        }
+        if (refs.maxAudios !== undefined && existingAudios + incoming.audios > refs.maxAudios) {
+            return {
+                key: "connectionQuotaAudiosExceeded",
+                params: { max: refs.maxAudios, current: existingAudios, incoming: incoming.audios },
+                defaultMessage: `连接被拒绝：超出参考音频上限（该模型最多支持 ${refs.maxAudios} 个，当前已有 ${existingAudios} 个）`,
+            };
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 探测指定节点当前输入连线中超出模型 DSL 配额或类型不兼容的既有连线 ID 集合
+ */
+export function findInvalidNodeConnections(
+    toNodeId: string,
+    nodes: CanvasNodeData[],
+    connections: CanvasConnection[],
+): Set<string> {
+    const invalidIds = new Set<string>();
+    const toNode = nodes.find((n) => n.id === toNodeId);
+    if (!toNode) return invalidIds;
+
+    const modelId = toNode.metadata?.modelId || toNode.metadata?.videoMode || toNode.metadata?.model;
+    const profile = getModelProfile(modelId) || (toNode.type === CanvasNodeType.Video ? videoMinimaxH3OmniProfile : toNode.type === CanvasNodeType.Image ? imageQwen21Profile : undefined);
+    if (!profile?.capabilityConfig.references) return invalidIds;
+
+    const refs = profile.capabilityConfig.references;
+    const incomingConnections = connections.filter((c) => c.toNodeId === toNodeId && c.kind === "input");
+
+    let imagesCount = 0;
+    let videosCount = 0;
+    let audiosCount = 0;
+
+    for (const conn of incomingConnections) {
+        const fromNode = nodes.find((n) => n.id === conn.fromNodeId);
+        if (!fromNode) {
+            invalidIds.add(conn.id);
+            continue;
+        }
+
+        const counts = getNodeResourceCounts(fromNode, nodes);
+        let isInvalid = false;
+
+        // 校验图片配额
+        if (counts.images > 0) {
+            if ((refs.maxImages ?? 0) === 0 || imagesCount + counts.images > (refs.maxImages ?? Infinity)) {
+                isInvalid = true;
+            } else {
+                imagesCount += counts.images;
+            }
+        }
+
+        // 校验视频配额
+        if (counts.videos > 0) {
+            if ((refs.maxVideos ?? 0) === 0 || videosCount + counts.videos > (refs.maxVideos ?? Infinity)) {
+                isInvalid = true;
+            } else {
+                videosCount += counts.videos;
+            }
+        }
+
+        // 校验音频配额
+        if (counts.audios > 0) {
+            if ((refs.maxAudios ?? 0) === 0 || audiosCount + counts.audios > (refs.maxAudios ?? Infinity)) {
+                isInvalid = true;
+            } else {
+                audiosCount += counts.audios;
+            }
+        }
+
+        if (isInvalid) {
+            invalidIds.add(conn.id);
+        }
+    }
+
+    return invalidIds;
+}
+
+/**
+ * 汇总全画布所有输入连线中超出模型 DSL 配额或类型不合规的连线集合
+ */
+export function getAllInvalidConnectionIds(
+    nodes: CanvasNodeData[],
+    connections: CanvasConnection[],
+): Set<string> {
+    const allInvalid = new Set<string>();
+    const targetNodeIds = new Set(connections.filter((c) => c.kind === "input").map((c) => c.toNodeId));
+    for (const targetId of targetNodeIds) {
+        const invalidForTarget = findInvalidNodeConnections(targetId, nodes, connections);
+        for (const id of invalidForTarget) {
+            allInvalid.add(id);
+        }
+    }
+    return allInvalid;
 }
 
 export function normalizeConnection(

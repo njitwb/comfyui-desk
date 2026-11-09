@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Plus, Puzzle, RefreshCw, Star, Trash2, Video } from "lucide-react";
+import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Plus, Puzzle, Star, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -13,6 +13,8 @@ import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin"
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { CanvasVideoPlayer } from "./canvas-video-player";
 import { useTranslation } from "react-i18next";
+import { formatNodeLoadingText, formatProgressCaption } from "@/lib/canvas/canvas-generation-helpers";
+import { CanvasGenerationError } from "./canvas-generation-error";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 const selectionBlue = "#2f80ff";
@@ -24,14 +26,14 @@ type CanvasNodeProps = {
     isRelated: boolean;
     isFocusRelated: boolean;
     isConnectionTarget: boolean;
+    isConnectionRejected?: boolean;
+    hasInvalidConnections?: boolean;
     isConnecting: boolean;
     referenceSelectionState?: "target" | "disabled" | "available";
-    showPanel: boolean;
     showImageInfo: boolean;
     mentionReferences?: CanvasResourceReference[];
     pluginHost?: CanvasPluginHost;
     registryVersion?: number;
-    renderPanel?: (node: CanvasNodeData) => ReactNode;
     renderNodeContent?: (node: CanvasNodeData) => ReactNode;
     groupChildCount?: number;
     isGroupDropTarget?: boolean;
@@ -85,6 +87,7 @@ type NodeContentRendererProps = {
     onViewBatchImage?: (imageId: string) => void;
     onViewMedia?: () => void;
     groupChildCount: number;
+    scale?: number;
 };
 
 export const CanvasNode = React.memo(function CanvasNode({
@@ -94,13 +97,13 @@ export const CanvasNode = React.memo(function CanvasNode({
     isRelated,
     isFocusRelated,
     isConnectionTarget,
+    isConnectionRejected = false,
+    hasInvalidConnections = false,
     isConnecting,
     referenceSelectionState,
-    showPanel,
     showImageInfo,
     mentionReferences = [],
     pluginHost,
-    renderPanel,
     renderNodeContent,
     groupChildCount = 0,
     isGroupDropTarget = false,
@@ -132,6 +135,7 @@ export const CanvasNode = React.memo(function CanvasNode({
 }: CanvasNodeProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { t } = useTranslation();
+    const safeScale = scale > 0 ? scale : 1;
     const [hovered, setHovered] = useState(false);
     const definition = getNodeDefinition(data.type);
     const pluginContext = useMemo<CanvasNodeContext | null>(() => (pluginHost ? buildNodeContext(pluginHost, data, theme, scale, isSelected) : null), [pluginHost, data, theme, scale, isSelected]);
@@ -339,7 +343,16 @@ export const CanvasNode = React.memo(function CanvasNode({
             }}
         >
             {!referenceSelectionState && (isSelected || hovered || isEditingTitle) && (
-                <div className="absolute left-3 top-[-28px] z-[65] max-w-[calc(100%-24px)]" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+                <div
+                    className="absolute left-3 bottom-full z-[65] origin-bottom-left"
+                    style={{
+                        transform: `scale(${1 / safeScale})`,
+                        paddingBottom: 6,
+                        maxWidth: `${Math.max(160, (data.width - 24) * safeScale)}px`,
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                >
                     {isEditingTitle ? (
                         <input
                             ref={titleInputRef}
@@ -378,9 +391,33 @@ export const CanvasNode = React.memo(function CanvasNode({
                 className="relative h-full w-full overflow-visible rounded-3xl border-2"
                 style={{
                     background: isGroup ? "transparent" : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
-                    borderColor: isGroup ? (isGroupDropTarget || isActive ? selectionBlue : theme.node.stroke) : hasImageContent ? imageBorderColor : isActive ? selectionBlue : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke,
-                    borderStyle: isGroup ? "dashed" : "solid",
-                    boxShadow: isGroupDropTarget ? `0 0 0 2px ${selectionBlue}66, inset 0 0 0 999px ${selectionBlue}10` : isActive ? `0 0 0 1px ${selectionBlue}55` : isRelated ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
+                    borderColor: isConnectionRejected
+                        ? "#ef4444"
+                        : isGroup
+                          ? (isGroupDropTarget || isActive ? selectionBlue : theme.node.stroke)
+                          : hasImageContent
+                            ? imageBorderColor
+                            : isActive
+                              ? selectionBlue
+                              : isRelated
+                                ? theme.node.muted
+                                : hasInvalidConnections
+                                  ? "#f59e0b"
+                                  : transparentBg
+                                    ? "transparent"
+                                    : theme.node.stroke,
+                    borderStyle: isGroup ? "dashed" : hasInvalidConnections && !isActive ? "dashed" : "solid",
+                    boxShadow: isConnectionRejected
+                        ? "0 0 0 2px #ef4444, 0 0 20px rgba(239, 68, 68, 0.45)"
+                        : isGroupDropTarget
+                          ? `0 0 0 2px ${selectionBlue}66, inset 0 0 0 999px ${selectionBlue}10`
+                          : isActive
+                            ? `0 0 0 1px ${selectionBlue}55`
+                            : hasInvalidConnections
+                              ? "0 0 0 1px #f59e0b55"
+                              : isRelated
+                                ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)`
+                                : undefined,
                 }}
                 onMouseDown={(event) => {
                     if (!referenceSelectionState) onMouseDown(event, data.id);
@@ -445,6 +482,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onViewBatchImage={(imageId) => onViewImage?.(data, imageId)}
                         onViewMedia={() => onViewImage?.(data)}
                         groupChildCount={groupChildCount}
+                        scale={safeScale}
                     />
                 </div>
 
@@ -464,38 +502,54 @@ export const CanvasNode = React.memo(function CanvasNode({
                 {!referenceSelectionState ? <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} /> : null}
             </div>
 
-            {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
+            {!referenceSelectionState && !isGroup ? (
+                <ConnectionHandleDot
+                    side="left"
+                    visible={hovered || isSelected || isConnecting}
+                    scale={safeScale}
+                    onMouseDown={(event) => onConnectStart(event, data.id, "target")}
+                />
+            ) : null}
             {!referenceSelectionState && (definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config && !(hasMultipleSelected && isSelected) ? (
                 <ConnectionHandleDot
                     side="right"
                     visible={hovered || isSelected || isConnecting}
+                    scale={safeScale}
                     onMouseDown={(event) => onConnectStart(event, data.id, "source")}
                     onClick={(event) => onConnectClick?.(event, data.id, "source")}
                 />
             ) : null}
-
-            {showPanel && !isGroup && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[720px] -translate-x-1/2 pt-4">{renderPanel(data)}</div> : null}
         </div>
     );
 });
 
 function NodeContent(props: NodeContentRendererProps) {
-    if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
-    if (props.isBatchRoot && props.node.type === CanvasNodeType.Image) return <ImageNodeContent {...props} />;
-    if (props.node.type === CanvasNodeType.Text && props.node.metadata?.texts?.length && (props.node.metadata.status !== "error" || props.node.metadata.texts.some((text) => text.content))) return <TextContent {...props} />;
-    if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} />;
-    if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
+    const { node } = props;
+    const slots = (node.type === CanvasNodeType.Image ? node.metadata?.images : node.type === CanvasNodeType.Text ? node.metadata?.texts : undefined) || [];
+    const hasError = node.metadata?.status === "error" || Boolean(node.metadata?.errorDetails) || slots.some((slot) => slot.status === "error");
+    const hasContent = Boolean(node.metadata?.content || slots.some((slot) => slot.content));
+    const isConfig = node.type === CanvasNodeType.Config && Boolean(props.renderNodeContent);
+    const failedWithoutContent = !hasContent && (node.metadata?.status === "error" || slots.length > 0 && slots.every((slot) => slot.status === "error"));
+    if (!isConfig && failedWithoutContent && !props.isBatchRoot) return <CanvasGenerationError node={node} onRetry={props.onRetry} />;
+    const rendersSlots = node.type === CanvasNodeType.Image && props.isBatchRoot || node.type === CanvasNodeType.Text && slots.length > 0;
+    if (!isConfig && node.metadata?.status === "loading" && !rendersSlots) return <LoadingContent theme={props.theme} node={node} />;
 
-    const Renderer = nodeContentRenderers[props.node.type as CanvasNodeType];
-    if (Renderer) return <Renderer {...props} />;
+    const Renderer = nodeContentRenderers[node.type as CanvasNodeType];
+    let content: ReactNode = isConfig ? props.renderNodeContent?.(node) : Renderer ? <Renderer {...props} /> : null;
 
     // Render plugin nodes with their registered renderer, or show the missing-plugin placeholder.
-    const definition = getNodeDefinition(props.node.type);
-    if (definition?.Content && props.pluginContext) {
-        const PluginContent = definition.Content;
-        return <PluginContent ctx={props.pluginContext} />;
+    if (!Renderer) {
+        const definition = getNodeDefinition(node.type);
+        const PluginContent = definition?.Content;
+        content = PluginContent && props.pluginContext ? <PluginContent ctx={props.pluginContext} /> : <MissingPluginContent theme={props.theme} type={node.type} />;
     }
-    return <MissingPluginContent theme={props.theme} type={props.node.type} />;
+    if (!hasError) return content;
+    return (
+        <div className="flex h-full w-full min-w-0 flex-col">
+            <div className={`relative min-h-0 flex-1 ${isConfig ? "thin-scrollbar overflow-y-auto" : ""}`}>{content}</div>
+            <div className="min-h-0 basis-1/2 shrink-0"><CanvasGenerationError node={node} onRetry={isConfig ? undefined : props.onRetry} /></div>
+        </div>
+    );
 }
 
 const nodeContentRenderers = {
@@ -507,11 +561,18 @@ const nodeContentRenderers = {
     [CanvasNodeType.Group]: GroupNodeContent,
 } satisfies Record<CanvasNodeType, (props: NodeContentRendererProps) => ReactNode>;
 
-function GroupNodeContent({ node, theme, groupChildCount }: NodeContentRendererProps) {
+function GroupNodeContent({ node, theme, groupChildCount, scale }: NodeContentRendererProps) {
     const { t } = useTranslation();
+    const safeScale = scale && scale > 0 ? scale : 1;
     return (
         <div className="pointer-events-none flex h-full w-full p-3">
-            <div className="flex h-7 max-w-full items-center gap-2 px-1 text-xs font-medium" style={{ color: theme.node.text }}>
+            <div
+                className="flex h-7 max-w-full origin-top-left items-center gap-2 px-1 text-xs font-medium"
+                style={{
+                    color: theme.node.text,
+                    transform: `scale(${1 / safeScale})`,
+                }}
+            >
                 <Group className="size-3.5 shrink-0" style={{ color: theme.node.muted }} />
                 <span className="truncate">{node.title || t("canvas.node.group")}</span>
                 <span className="shrink-0 text-[11px] font-normal" style={{ color: theme.node.muted }}>
@@ -522,35 +583,30 @@ function GroupNodeContent({ node, theme, groupChildCount }: NodeContentRendererP
     );
 }
 
-function LoadingContent({ theme }: Pick<NodeContentRendererProps, "theme">) {
-    const { t } = useTranslation();
+function GenerationProgress({ theme, pct, caption }: { theme: NodeContentRendererProps["theme"]; pct?: number; caption?: string }) {
+    if (typeof pct !== "number") return null;
+    const width = Math.max(0, Math.min(100, pct));
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.activeStroke }}>
-            <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
-            <span className="text-[10px] tracking-[0.2em]">{t("canvas.node.generating")}</span>
+        <div className="flex w-24 flex-col items-center gap-1.5">
+            <div className="h-[3px] w-full overflow-hidden rounded-full" style={{ background: theme.node.stroke }}>
+                <div className="h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${width}%`, background: theme.node.activeStroke }} />
+            </div>
+            {caption ? (
+                <span className="text-[10px] tracking-[0.1em]" style={{ color: theme.node.activeStroke }}>
+                    {caption}
+                </span>
+            ) : null}
         </div>
     );
 }
 
-function ErrorContent({ node, theme, onRetry }: Pick<NodeContentRendererProps, "node" | "theme" | "onRetry">) {
-    const { t } = useTranslation();
-    const canResume = Boolean(node.metadata?.jobId);
+function LoadingContent({ theme, node }: Pick<NodeContentRendererProps, "theme"> & { node?: CanvasNodeData }) {
+    const loadingText = formatNodeLoadingText(node?.metadata);
     return (
-        <div className="flex max-w-[260px] flex-col items-center gap-3 px-5 text-center">
-            <div className="text-xs leading-5 text-red-300">{node.metadata?.errorDetails || t("canvas.node.failed")}</div>
-            <button
-                type="button"
-                className="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition hover:scale-[1.02]"
-                style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    onRetry?.(node);
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-            >
-                <RefreshCw className="size-3.5" />
-                {canResume ? t("canvas.node.resumePolling") : t("canvas.node.retry")}
-            </button>
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.activeStroke }}>
+            <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
+            <GenerationProgress theme={theme} pct={node?.metadata?.progressPct} caption={formatProgressCaption(node?.metadata)} />
+            <span className="text-[10px] tracking-[0.2em]">{loadingText}</span>
         </div>
     );
 }
@@ -658,7 +714,7 @@ function ExpandedTextCard({ node, text, index, onSetPrimary }: { node: CanvasNod
 
     return (
         <div
-            className="absolute z-20 overflow-hidden rounded-3xl border shadow-[0_18px_50px_rgba(28,25,23,.14)]"
+            className="group absolute z-20 overflow-hidden rounded-3xl border shadow-[0_18px_50px_rgba(28,25,23,.14)]"
             style={
                 {
                     left: x,
@@ -678,10 +734,15 @@ function ExpandedTextCard({ node, text, index, onSetPrimary }: { node: CanvasNod
         >
             {text.content ? (
                 <>
-                    <div className="thin-scrollbar h-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-4 pt-14 font-mono text-sm leading-6" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
+                    <div className="thin-scrollbar h-full overflow-y-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-6" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
                         {text.content}
                     </div>
-                    <button type="button" className="absolute right-2.5 top-2.5 flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} onClick={(event) => (event.stopPropagation(), onSetPrimary())}>
+                    <button
+                        type="button"
+                        className="absolute right-2.5 top-2.5 flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10"
+                        style={{ color: theme.node.text }}
+                        onClick={(event) => (event.stopPropagation(), onSetPrimary())}
+                    >
                         <Star className="size-3.5" style={{ color: selectionBlue }} />
                         {t("canvas.node.setPrimaryText")}
                     </button>
@@ -698,10 +759,19 @@ function TextSlotStatus({ text }: { text: CanvasNodeText }) {
     const { t } = useTranslation();
     const failed = text.status === "error";
     const loading = text.status === "loading";
+    const loadingText = formatNodeLoadingText(text);
+
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center" style={{ background: theme.node.fill, color: failed ? theme.node.text : theme.node.activeStroke }}>
-            {failed ? <span className="text-xs leading-5">{text.errorDetails || t("canvas.node.failed")}</span> : loading ? <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} /> : <span className="text-xs">{t("apiErrors.noContent")}</span>}
-            {loading ? <span className="text-[10px] tracking-[0.2em]">{t("canvas.node.generating")}</span> : null}
+            {failed ? (
+                <CanvasGenerationError errorDetails={text.errorDetails} />
+            ) : loading ? (
+                <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
+            ) : (
+                <span className="text-xs">{t("apiErrors.noContent")}</span>
+            )}
+            {loading ? <GenerationProgress theme={theme} pct={text.progressPct} caption={formatProgressCaption(text)} /> : null}
+            {loading ? <span className="text-[10px] tracking-[0.2em]">{loadingText}</span> : null}
         </div>
     );
 }
@@ -738,13 +808,16 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
 
 function VideoNodeContent({ node, theme, onViewMedia }: NodeContentRendererProps) {
     const { t } = useTranslation();
-    if (!node.metadata?.content)
+    if (!node.metadata?.content) {
         return (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
-                <Video className="size-7 opacity-35" />
-                <span className="text-sm">{t("canvas.node.emptyVideo")}</span>
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2" style={{ color: theme.node.placeholder }}>
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-black/5 dark:bg-white/5">
+                    <Video className="size-6 opacity-30" />
+                </div>
+                <span className="text-[10px] tracking-[0.18em] opacity-50">{t("canvas.node.emptyVideo")}</span>
             </div>
         );
+    }
     return <CanvasVideoPlayer nodeId={node.id} src={node.metadata.content} onPreview={onViewMedia} />;
 }
 
@@ -759,10 +832,10 @@ function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
         );
     return (
         <div className="flex h-full w-full flex-col justify-center gap-3 px-4" style={{ background: theme.node.fill, color: theme.node.text }}>
-            <div className="flex min-w-0 items-center gap-2 text-sm opacity-70">
+            {node.metadata?.status !== "error" ? <div className="flex min-w-0 items-center gap-2 text-sm opacity-70">
                 <Music2 className="size-4 shrink-0" />
                 <span className="truncate">{t("canvas.node.audio")}</span>
-            </div>
+            </div> : null}
             <audio src={node.metadata.content} controls className="w-full" data-canvas-no-zoom />
         </div>
     );
@@ -818,13 +891,6 @@ function ImageContent({
                     <ImageSlotStatus image={primaryImage} />
                 )}
             </div>
-            {primaryImage?.status === "error" ? <BatchImageFailureActions placement="left" canResume={Boolean(primaryImage.jobId)} onRetry={() => onRetryBatchImage?.(primaryImage.id)} onDelete={() => onDeleteBatchImage?.(primaryImage.id)} /> : null}
-            {primaryImage?.content ? (
-                <button type="button" className="absolute left-2.5 top-2.5 z-30 flex h-8 items-center gap-1 rounded-lg border px-2 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("common.download")} onClick={(event) => (event.stopPropagation(), onDownloadBatchImage?.(primaryImage.id))}>
-                    <Download className="size-3" />
-                    {t("common.download")}
-                </button>
-            ) : null}
             {isBatchRoot ? (
                 <button
                     type="button"
@@ -861,7 +927,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
 
     return (
         <div
-            className={`absolute z-20 overflow-hidden rounded-3xl ${image.content ? "" : "border shadow-[0_18px_50px_rgba(28,25,23,.18)]"}`}
+            className={`group absolute z-20 overflow-hidden rounded-3xl ${image.content ? "" : "border shadow-[0_18px_50px_rgba(28,25,23,.18)]"}`}
             style={
                 {
                     left: x,
@@ -886,7 +952,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
         >
             {image.content ? <img src={image.content} alt={node.title} draggable={false} className="pointer-events-none h-full w-full select-none object-contain" /> : <ImageSlotStatus image={image} />}
             {image.content ? (
-                <div className="absolute inset-x-2 top-2 flex items-center gap-1">
+                <div className="absolute inset-x-2 top-2 flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
                     <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("common.download")} onClick={(event) => (event.stopPropagation(), onDownload())}>
                         <Download className="size-3 shrink-0" />
                         <span className="truncate">{t("common.download")}</span>
@@ -901,23 +967,6 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
                     </button>
                 </div>
             ) : null}
-            {image.status === "error" ? <BatchImageFailureActions placement="right" canResume={Boolean(image.jobId)} onRetry={onRetry} onDelete={onDelete} /> : null}
-        </div>
-    );
-}
-
-function BatchImageFailureActions({ placement, canResume, onRetry, onDelete }: { placement: "left" | "right"; canResume: boolean; onRetry: () => void; onDelete: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const { t } = useTranslation();
-    return (
-        <div className={`absolute top-3 z-30 flex items-center gap-1.5 ${placement === "left" ? "left-3" : "right-3"}`}>
-            <button type="button" className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium shadow-sm transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onClick={(event) => (event.stopPropagation(), onRetry())}>
-                <RefreshCw className="size-3.5" />
-                {canResume ? t("canvas.node.resumePolling") : t("canvas.node.retry")}
-            </button>
-            <button type="button" className="grid size-8 place-items-center rounded-lg border shadow-sm transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onClick={(event) => (event.stopPropagation(), onDelete())} aria-label={t("common.delete")} title={t("common.delete")}>
-                <Trash2 className="size-3.5" />
-            </button>
         </div>
     );
 }
@@ -927,14 +976,17 @@ function ImageSlotStatus({ image }: { image?: CanvasNodeImage }) {
     const { t } = useTranslation();
     const failed = image?.status === "error";
     const loading = image?.status === "loading";
+    const loadingText = formatNodeLoadingText(image);
+
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center" style={{ background: theme.node.fill, color: failed ? theme.node.text : theme.node.activeStroke }}>
             {failed ? (
-                <span className="text-xs leading-5">{image?.errorDetails || t("canvas.node.failed")}</span>
+                <CanvasGenerationError errorDetails={image?.errorDetails} />
             ) : loading ? (
                 <>
                     <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
-                    <span className="text-[10px] tracking-[0.2em]">{t("canvas.node.generating")}</span>
+                    <GenerationProgress theme={theme} pct={image?.progressPct} caption={formatProgressCaption(image)} />
+                    <span className="text-[10px] tracking-[0.2em]">{loadingText}</span>
                 </>
             ) : (
                 <div className="flex flex-col items-center justify-center gap-2" style={{ color: theme.node.placeholder }}>
@@ -1003,69 +1055,178 @@ function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDo
 function ConnectionHandleDot({
     side,
     visible,
+    scale = 1,
     onMouseDown,
     onClick,
 }: {
     side: "left" | "right";
     visible: boolean;
+    scale?: number;
     onMouseDown: (event: React.MouseEvent) => void;
     onClick?: (event: React.MouseEvent) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+    const buttonRef = useRef<HTMLDivElement>(null);
+    const [isHovered, setIsHovered] = useState(false);
+    const [stickyOffset, setStickyOffset] = useState<{ x: number; y: number } | null>(null);
+    const isDraggingRef = useRef(false);
+    const dragStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const safeScale = scale > 0 ? scale : 1;
+    const isRight = side === "right";
+    const dragThreshold = isRight ? 46 : 38;
 
-    const handleMouseDown = (event: React.MouseEvent) => {
-        dragStartPosRef.current = { x: event.clientX, y: event.clientY };
-        onMouseDown(event);
-    };
+    // 鼠标在触点感应范围悬浮移动时，触点磁吸粘连跟随鼠标移动（仅向外侧延伸，禁止向节点内部移动）
+    const handlePointerMove = (event: React.PointerEvent) => {
+        if (isDraggingRef.current) return;
+        const button = buttonRef.current;
+        if (!button) return;
 
-    const handleClick = (event: React.MouseEvent) => {
-        event.stopPropagation();
-        if (dragStartPosRef.current) {
-            const dx = Math.abs(event.clientX - dragStartPosRef.current.x);
-            const dy = Math.abs(event.clientY - dragStartPosRef.current.y);
-            if (dx > 4 || dy > 4) return;
+        const rect = button.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dx = event.clientX - centerX;
+        const dy = event.clientY - centerY;
+
+        // 向节点内部移动时立即解除粘连并回弹原位（右触点禁止向左内移，左触点禁止向右内移）
+        const isInward = isRight ? dx <= 0 : dx >= 0;
+        if (isInward) {
+            setStickyOffset(null);
+            return;
         }
-        onClick?.(event);
+
+        const distance = Math.hypot(dx, dy);
+
+        if (distance > 0) {
+            // 仅向节点外侧粘连跟随
+            const maxFollow = isRight ? 28 : 18;
+            const pull = Math.min(distance * 0.7, maxFollow);
+            setStickyOffset({
+                x: (dx / distance) * pull,
+                y: (dy / distance) * pull,
+            });
+        }
     };
 
-    if (side === "right") {
-        return (
-            <div
-                data-connection-handle
-                className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 -right-6 ${
-                    visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-                }`}
-                onMouseDown={handleMouseDown}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={handleClick}
-                title="点击快捷创建 / 拖拽连线"
-                aria-label="连接触点"
-            >
-                <div
-                    className="flex size-6.5 items-center justify-center rounded-full border shadow-sm transition-all hover:scale-125 hover:shadow-md"
-                    style={{
-                        background: theme.node.panel,
-                        borderColor: theme.node.activeStroke,
-                        color: theme.node.text,
-                    }}
-                >
-                    <Plus className="size-3.5 stroke-[2.5]" />
-                </div>
-            </div>
-        );
-    }
+    // 鼠标离开且没有发生拖拽时，触点平滑弹回原位
+    const handlePointerLeave = () => {
+        setIsHovered(false);
+        if (!isDraggingRef.current) {
+            setStickyOffset(null);
+        }
+    };
+
+    // 鼠标按下进入拖拽连线流程
+    const handlePointerDown = (event: React.PointerEvent) => {
+        event.stopPropagation();
+        if (event.button !== 0) return;
+
+        dragStartPosRef.current = { x: event.clientX, y: event.clientY };
+        isDraggingRef.current = true;
+
+        const onWindowPointerMove = (moveEvent: PointerEvent) => {
+            if (!isDraggingRef.current) return;
+            const dx = moveEvent.clientX - dragStartPosRef.current.x;
+            const dy = moveEvent.clientY - dragStartPosRef.current.y;
+
+            // 拖拽时若向节点内部移动，也禁止向内拉伸，保持在原位
+            const isInward = isRight ? dx <= 0 : dx >= 0;
+            if (isInward) {
+                setStickyOffset(null);
+                return;
+            }
+
+            const distance = Math.hypot(dx, dy);
+
+            if (distance < dragThreshold) {
+                // 拖拽拉伸
+                setStickyOffset({ x: dx * 0.65, y: dy * 0.65 });
+            } else {
+                // 达到拖拽阈值：触点弹回原位并抽出连线
+                isDraggingRef.current = false;
+                setStickyOffset(null);
+                window.removeEventListener("pointermove", onWindowPointerMove);
+                window.removeEventListener("pointerup", onWindowPointerUp);
+                onMouseDown(moveEvent as unknown as React.MouseEvent);
+            }
+        };
+
+        const onWindowPointerUp = (upEvent: PointerEvent) => {
+            if (!isDraggingRef.current) return;
+            isDraggingRef.current = false;
+            window.removeEventListener("pointermove", onWindowPointerMove);
+            window.removeEventListener("pointerup", onWindowPointerUp);
+
+            const dx = Math.abs(upEvent.clientX - dragStartPosRef.current.x);
+            const dy = Math.abs(upEvent.clientY - dragStartPosRef.current.y);
+            setStickyOffset(null);
+
+            // 未达到阈值松开时触发点击
+            if (dx < dragThreshold && dy < dragThreshold) {
+                onClick?.(upEvent as unknown as React.MouseEvent);
+            }
+        };
+
+        window.addEventListener("pointermove", onWindowPointerMove);
+        window.addEventListener("pointerup", onWindowPointerUp);
+    };
+
+    const isVisible = visible || isHovered || Boolean(stickyOffset);
+    const containerClass = isRight ? "w-12 h-14 justify-start" : "w-10 h-14 justify-end";
 
     return (
         <div
             data-connection-handle
-            className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 -left-6 ${
-                visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+            className={`absolute z-30 flex ${containerClass} cursor-crosshair items-center transition-opacity duration-150 ${
+                isVisible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
             }`}
-            onMouseDown={onMouseDown}
-            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+                left: isRight ? "100%" : undefined,
+                right: !isRight ? "100%" : undefined,
+                top: "50%",
+                transform: `translateY(-50%) scale(${1 / safeScale})`,
+                transformOrigin: isRight ? "left center" : "right center",
+            }}
+            onMouseEnter={() => setIsHovered(true)}
+            onPointerMove={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
+            onPointerDown={handlePointerDown}
+            title={isRight ? "点击快捷创建 / 拖拽连线" : "拖拽连线"}
+            aria-label="连接触点"
         >
-            <div className="size-3 rounded-full border-2 transition-all hover:scale-125" style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
+            {isRight ? (
+                <div
+                    ref={buttonRef}
+                    className={`flex size-6.5 items-center justify-center rounded-full border shadow-sm ${
+                        isHovered || stickyOffset ? "scale-125 shadow-md" : ""
+                    }`}
+                    style={{
+                        background: theme.node.panel,
+                        borderColor: theme.node.activeStroke,
+                        color: theme.node.text,
+                        transformOrigin: "left center",
+                        transform: stickyOffset ? `translate(${stickyOffset.x}px, ${stickyOffset.y}px)` : "translate(0, 0)",
+                        transition: stickyOffset
+                            ? "transform 40ms ease-out"
+                            : "transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1), scale 150ms ease",
+                    }}
+                >
+                    <Plus className="size-3.5 stroke-[2.5]" />
+                </div>
+            ) : (
+                <div
+                    ref={buttonRef}
+                    className={`size-3 rounded-full border-2 mr-1.5 ${isHovered || stickyOffset ? "scale-125" : ""}`}
+                    style={{
+                        background: theme.node.panel,
+                        borderColor: theme.node.muted,
+                        transformOrigin: "right center",
+                        transform: stickyOffset ? `translate(${stickyOffset.x}px, ${stickyOffset.y}px)` : "translate(0, 0)",
+                        transition: stickyOffset
+                            ? "transform 40ms ease-out"
+                            : "transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1), scale 150ms ease",
+                    }}
+                />
+            )}
         </div>
     );
 }

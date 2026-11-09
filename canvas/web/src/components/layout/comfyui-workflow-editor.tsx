@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-import type { ComfyuiWorkflow, ComfyWorkflowItem } from "@/stores/use-config-store";
+import type { ComfyuiWorkflow, ComfyWorkflowItem, ModelChannel } from "@/stores/use-config-store";
 
 const BUILTIN_WORKFLOW_IDENTIFIERS = new Set([
     "t2i_z_image_turbo_api.json",
@@ -23,6 +23,14 @@ const BUILTIN_WORKFLOW_IDENTIFIERS = new Set([
     "minimax_h3_ref2va_bf16_20step_api.json",
     "MiniMax H3 全能参考 (BF16 20步)",
     "MiniMax H3 全能视频 (BF16 20步)",
+    "video_minimax_h3_omni_int8_4step_pdmd_api.json",
+    "minimax_h3_ref2v_int8_convrot_4step_pdmd_api.json",
+    "MiniMax H3 全能视频 (INT8 4步 PDMD)",
+    "MiniMax H3 全能 (INT8 4步 PDMD)",
+    "video_minimax_h3_omni_int8_6step_pika_api.json",
+    "minimax_h3_ref2v_int8_convrot_6step_pika_api.json",
+    "MiniMax H3 全能视频 (INT8 6步 Pika)",
+    "MiniMax H3 全能 (INT8 6步 Pika)",
     "video_minimax_h3_frame_fp8_20step_api.json",
     "MiniMax H3 首尾帧 (FP8 20步)",
     "video_minimax_h3_frame_fp8_4step_pdmd_api.json",
@@ -35,6 +43,14 @@ const BUILTIN_WORKFLOW_IDENTIFIERS = new Set([
     "minimax_h3_fl2va_bf16_20step_api.json",
     "MiniMax H3 首尾帧 (BF16 20步)",
     "MiniMax H3 首尾帧视频 (BF16 20步)",
+    "video_minimax_h3_frame_int8_4step_pdmd_api.json",
+    "minimax_h3_fl2va_int8_convrot_4step_pdmd_api.json",
+    "MiniMax H3 首尾帧视频 (INT8 4步 PDMD)",
+    "MiniMax H3 首尾帧 (INT8 4步 PDMD)",
+    "video_minimax_h3_frame_int8_6step_pika_api.json",
+    "minimax_h3_fl2va_int8_convrot_6step_pika_api.json",
+    "MiniMax H3 首尾帧视频 (INT8 6步 Pika)",
+    "MiniMax H3 首尾帧 (INT8 6步 Pika)",
     "qwen_image_21_api.json",
     "Qwen-Image-2.1 文生图",
     "Qwen-Image-2.1 多图参考图生图",
@@ -53,6 +69,10 @@ export function ComfyuiWorkflowEditor({
     defaultWorkflow?: ComfyuiWorkflow | ComfyWorkflowItem;
     isBuiltin?: boolean;
     onChange?: (value?: ComfyuiWorkflow) => void;
+    channel?: ModelChannel;
+    category?: string;
+    channelId?: string;
+    workflowId?: string;
 }) {
     const { t } = useTranslation();
 

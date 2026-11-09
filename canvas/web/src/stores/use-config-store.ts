@@ -5,6 +5,8 @@ import { nanoid } from "nanoid";
 
 import { localForageStorage } from "@/lib/localforage-storage";
 import { comfyuiUrlOverride } from "@/lib/comfyui-url-override";
+import { getModelProfile } from "@/services/api/models";
+import type { ModelSupportedTools } from "@/services/api/models/types";
 
 import {
     DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW,
@@ -39,6 +41,21 @@ export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
 export type WorkflowCategory = "t2i" | "i2i" | "inpaint" | "text" | "omniVideo" | "frameVideo" | "audio" | "faceRefine" | "depthVideo" | "superResolve" | "angle" | "upscale";
 
+export const WORKFLOW_CATEGORY_TO_CHANNEL_FIELD: Record<WorkflowCategory, keyof ModelChannel> = {
+    t2i: "comfyuiT2iWorkflow",
+    i2i: "comfyuiI2iWorkflow",
+    inpaint: "comfyuiInpaintWorkflow",
+    text: "comfyuiTextWorkflow",
+    omniVideo: "comfyuiVideoWorkflow",
+    frameVideo: "comfyuiFrameVideoWorkflow",
+    audio: "comfyuiAudioWorkflow",
+    faceRefine: "comfyuiFaceRefineWorkflow",
+    depthVideo: "comfyuiDepthVideoWorkflow",
+    superResolve: "comfyuiSuperResolveWorkflow",
+    angle: "comfyuiAngleWorkflow",
+    upscale: "comfyuiUpscaleWorkflow",
+};
+
 export type ToolbarConfig = {
     ids: string[];
     showLabels: boolean;
@@ -67,6 +84,7 @@ export type ChannelModel = {
     capability: ModelCapability;
     script?: string;
     comfyuiWorkflow?: ComfyuiWorkflow;
+    supportedTools?: ModelSupportedTools;
 };
 
 export type ModelChannel = {
@@ -78,6 +96,7 @@ export type ModelChannel = {
     models: ChannelModel[];
     comfyuiProxyUrl?: string;
     comfyuiProxyToken?: string;
+    supportedModelIds?: string[];
     workflows?: ComfyWorkflowItem[];
     comfyuiT2iWorkflow?: ComfyuiWorkflow;
     comfyuiI2iWorkflow?: ComfyuiWorkflow;
@@ -163,6 +182,113 @@ export const COMFYUI_LOCAL_DEFAULT_MODELS: ChannelModel[] = COMFYUI_BUILTIN_DEFA
 export const COMFYUI_CLOUD_DEFAULT_MODELS: ChannelModel[] = COMFYUI_BUILTIN_DEFAULT_MODELS;
 export const COMFYUI_DEFAULT_MODELS: ChannelModel[] = COMFYUI_BUILTIN_DEFAULT_MODELS;
 
+/**
+ * 默认主机支持的视频模型 ID 清单（开箱即用支持 4 款 MiniMax H3 FP8 + 4 款 INT8 量化模型）
+ */
+export const DEFAULT_SUPPORTED_VIDEO_MODEL_IDS: string[] = [
+    "omni-video-minimax-h3-fp8-4step-pdmd",
+    "omni-video-minimax-h3-fp8",
+    "frame-video-minimax-h3-fp8-4step-pdmd",
+    "frame-video-minimax-h3-fp8",
+    "omni-video-minimax-h3-int8-4step-pdmd",
+    "frame-video-minimax-h3-int8-4step-pdmd",
+    "omni-video-minimax-h3-int8-6step-pika",
+    "frame-video-minimax-h3-int8-6step-pika",
+];
+
+/**
+ * 历史默认视频模型集合（INT8 量化模型未纳入默认清单前的版本）。
+ * 用于识别「该主机的支持模型清单来自旧版默认值」，从而自动补齐后续新增的内置模型，
+ * 避免旧配置永久看不到新模型（该字段无任何 UI 编辑入口）。
+ */
+export const LEGACY_DEFAULT_SUPPORTED_VIDEO_MODEL_IDS: string[] = [
+    "omni-video-minimax-h3-fp8-4step-pdmd",
+    "omni-video-minimax-h3-fp8",
+    "frame-video-minimax-h3-fp8-4step-pdmd",
+    "frame-video-minimax-h3-fp8",
+];
+
+/**
+ * 默认主机支持的生图模型 ID 清单（开箱即用支持 4 款标准生图模型）
+ */
+export const DEFAULT_SUPPORTED_IMAGE_MODEL_IDS: string[] = [
+    "image-qwen-2.1",
+    "image-z-turbo",
+    "image-flux2-dev",
+    "image-qwen-inpaint",
+];
+
+/**
+ * 默认主机支持的文本模型 ID 清单（开箱即用支持 2 款标准文本模型）
+ */
+export const DEFAULT_SUPPORTED_TEXT_MODEL_IDS: string[] = [
+    "text-qwen-35",
+];
+
+/**
+ * 默认主机支持的音频模型 ID 清单（开箱即用支持 MiniMax Music 03）
+ */
+export const DEFAULT_SUPPORTED_AUDIO_MODEL_IDS: string[] = [
+    "audio-minimax-music-3",
+];
+
+/**
+ * 默认主机支持的全量工作流模型清单
+ */
+export const DEFAULT_SUPPORTED_MODEL_IDS: string[] = [
+    ...DEFAULT_SUPPORTED_VIDEO_MODEL_IDS,
+    ...DEFAULT_SUPPORTED_IMAGE_MODEL_IDS,
+    ...DEFAULT_SUPPORTED_TEXT_MODEL_IDS,
+    ...DEFAULT_SUPPORTED_AUDIO_MODEL_IDS,
+];
+
+/**
+ * 校验指定渠道/主机是否支持运行目标工作流模型
+ * 若 supportedModelIds 为空或未设置，则依据开箱即用原则默认全支持
+ */
+export function isModelSupportedByHost(channel: ModelChannel | undefined, modelId: string): boolean {
+    if (!channel) return false;
+    if (!channel.supportedModelIds || channel.supportedModelIds.length === 0) {
+        return true;
+    }
+    // 兼容历史模型别名映射
+    const normalizedId = modelId === "video_minimax_h3_omni"
+        ? "omni-video-minimax-h3-fp8-4step-pdmd"
+        : modelId === "video_minimax_h3_frame"
+        ? "frame-video-minimax-h3-fp8-4step-pdmd"
+        : modelId;
+    if (channel.supportedModelIds.includes(normalizedId) || channel.supportedModelIds.includes(modelId)) {
+        return true;
+    }
+    // 开箱即用兼容：若主机仅包含历史视频模型配置、尚未显式声明任何生图模型，
+    // 则默认对系统内置生图模型放行，避免历史旧配置导致生图模型意外被阻断
+    const hasAnyImageConfigured = channel.supportedModelIds.some((id) =>
+        DEFAULT_SUPPORTED_IMAGE_MODEL_IDS.includes(id) || id.startsWith("image-")
+    );
+    if (!hasAnyImageConfigured && (DEFAULT_SUPPORTED_IMAGE_MODEL_IDS.includes(normalizedId) || normalizedId.startsWith("image-"))) {
+        return true;
+    }
+
+    // 开箱即用兼容：若主机尚未显式声明任何文本模型，
+    // 则默认对系统内置文本模型放行，避免历史旧配置导致文本模型意外被阻断
+    const hasAnyTextConfigured = channel.supportedModelIds.some((id) =>
+        DEFAULT_SUPPORTED_TEXT_MODEL_IDS.includes(id) || id.startsWith("text-")
+    );
+    if (!hasAnyTextConfigured && (DEFAULT_SUPPORTED_TEXT_MODEL_IDS.includes(normalizedId) || normalizedId.startsWith("text-"))) {
+        return true;
+    }
+
+    // 开箱即用兼容：若主机尚未显式声明任何音频模型，
+    // 则默认对系统内置音频模型放行，避免历史旧配置导致音频模型意外被阻断
+    const hasAnyAudioConfigured = channel.supportedModelIds.some((id) =>
+        DEFAULT_SUPPORTED_AUDIO_MODEL_IDS.includes(id) || id.startsWith("audio-")
+    );
+    if (!hasAnyAudioConfigured && (DEFAULT_SUPPORTED_AUDIO_MODEL_IDS.includes(normalizedId) || normalizedId.startsWith("audio-"))) {
+        return true;
+    }
+    return false;
+}
+
 export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: "",
@@ -177,6 +303,7 @@ export const defaultConfig: AiConfig = {
             apiFormat: "comfyui",
             comfyuiProxyUrl: "http://127.0.0.1:8188",
             comfyuiProxyToken: "",
+            supportedModelIds: [...DEFAULT_SUPPORTED_MODEL_IDS],
             workflows: getDefaultComfyWorkflowItems({ id: "builtin" }),
             comfyuiT2iWorkflow: DEFAULT_BUILTIN_COMFYUI_T2I_WORKFLOW,
             comfyuiI2iWorkflow: DEFAULT_BUILTIN_COMFYUI_I2I_WORKFLOW,
@@ -216,7 +343,7 @@ export const defaultConfig: AiConfig = {
         "builtin::MiniMax Music 03",
     ],
     quality: "auto",
-    size: "1:1",
+    size: "512x512",
     background: "",
     count: "1",
     canvasImageCount: "1",
@@ -245,6 +372,8 @@ type ConfigStore = {
     openConfigDialog: (shouldPromptContinue?: boolean, tab?: ConfigTabKey) => void;
     setConfigDialogOpen: (isOpen: boolean) => void;
     clearPromptContinue: () => void;
+    setChannelDefaultWorkflow: (channelId: string, category: WorkflowCategory, workflowId: string) => void;
+    updateChannelSupportedModels: (channelId: string, supportedModelIds: string[]) => void;
 };
 
 const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo", "视频", "minimax"];
@@ -273,6 +402,8 @@ function findChannelModel(config: AiConfig, value: string): { channel: ModelChan
 }
 
 export function modelCapabilityOf(config: AiConfig, value: string): ModelCapability | undefined {
+    const profile = getModelProfile(value);
+    if (profile?.capability) return profile.capability;
     return findChannelModel(config, value)?.model.capability;
 }
 
@@ -283,6 +414,8 @@ function isInpaintModelName(name: string): boolean {
 
 export function modelMatchesCapability(config: AiConfig, value: string, capability?: ModelCapability) {
     if (!capability) return true;
+    const profile = getModelProfile(value);
+    if (profile) return profile.capability === capability;
     if (capability === "image") {
         const decoded = decodeChannelModel(value);
         const name = decoded?.model || value;
@@ -381,10 +514,6 @@ export const useConfigStore = create<ConfigStore>()(
                             toolbar: {
                                 ...currentToolbar,
                                 ...patch,
-                                bindings: {
-                                    ...(currentToolbar.bindings || {}),
-                                    ...(patch.bindings || {}),
-                                },
                             },
                         },
                     };
@@ -400,6 +529,59 @@ export const useConfigStore = create<ConfigStore>()(
             openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => set({ isConfigOpen: true, shouldPromptContinue, configTab }),
             setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
             clearPromptContinue: () => set({ shouldPromptContinue: false }),
+            setChannelDefaultWorkflow: (channelId: string, category: WorkflowCategory, workflowId: string) =>
+                set((state) => {
+                    const channels = state.config.channels.map((channel) => {
+                        if (channel.id !== channelId) return channel;
+
+                        const currentWorkflows = getChannelWorkflows(channel);
+                        const targetWorkflow = currentWorkflows.find(
+                            (wf) => wf.id === workflowId || (wf.category === category && wf.name === workflowId)
+                        );
+                        if (!targetWorkflow) return channel;
+
+                        const nextWorkflows = currentWorkflows.map((wf) => {
+                            if (wf.category !== category) return wf;
+                            const isSelected = wf.id === targetWorkflow.id || wf.name === targetWorkflow.name;
+                            return {
+                                ...wf,
+                                isDefault: isSelected,
+                            };
+                        });
+
+                        const updatedChannel: ModelChannel = {
+                            ...channel,
+                            workflows: nextWorkflows,
+                        };
+
+                        const channelField = WORKFLOW_CATEGORY_TO_CHANNEL_FIELD[category];
+                        if (channelField) {
+                            (updatedChannel as any)[channelField] = {
+                                name: targetWorkflow.name,
+                                json: targetWorkflow.json,
+                                createdAt: targetWorkflow.createdAt || Date.now(),
+                                isBuiltin: targetWorkflow.isBuiltin,
+                            };
+                        }
+                        return updatedChannel;
+                    });
+
+                    return {
+                        config: {
+                            ...state.config,
+                            channels,
+                        },
+                    };
+                }),
+            updateChannelSupportedModels: (channelId: string, supportedModelIds: string[]) =>
+                set((state) => ({
+                    config: {
+                        ...state.config,
+                        channels: state.config.channels.map((channel) =>
+                            channel.id === channelId ? { ...channel, supportedModelIds } : channel
+                        ),
+                    },
+                })),
         }),
         {
             name: CONFIG_STORE_KEY,
@@ -570,6 +752,27 @@ function mergeBuiltinWorkflows(existingWorkflows: ComfyWorkflowItem[] | undefine
     return result;
 }
 
+/**
+ * 内置视频模型支持清单演进（与 mergeBuiltinWorkflows 同构）：
+ * 仅当主机清单看上去来自旧版默认值——包含全部旧默认视频模型、且包含至少一个非视频内置模型——
+ * 才把新增的内置视频模型补到末尾；显式裁剪的视频子集与空数组不被污染。
+ */
+function mergeBuiltinSupportedModelIds(existing: string[] | undefined): string[] {
+    if (!Array.isArray(existing) || existing.length === 0) {
+        return Array.isArray(existing) ? existing : [];
+    }
+    const isLegacyDefaultDerived =
+        LEGACY_DEFAULT_SUPPORTED_VIDEO_MODEL_IDS.every((id) => existing.includes(id)) &&
+        existing.some((id) => DEFAULT_SUPPORTED_IMAGE_MODEL_IDS.includes(id) || id.startsWith("image-") || id.startsWith("text-") || id.startsWith("audio-"));
+    if (!isLegacyDefaultDerived) return existing;
+
+    const result = [...existing];
+    for (const id of DEFAULT_SUPPORTED_VIDEO_MODEL_IDS) {
+        if (!result.includes(id)) result.push(id);
+    }
+    return result;
+}
+
 export function createModelChannel(channel?: Partial<ModelChannel>, options?: { preprovisionComfyuiModels?: boolean }): ModelChannel {
     const isCloud = isCloudChannel(channel);
     const workflows = getDefaultComfyuiWorkflows(channel);
@@ -585,6 +788,9 @@ export function createModelChannel(channel?: Partial<ModelChannel>, options?: { 
         models: models.length ? models : options?.preprovisionComfyuiModels !== false ? [...defaultModels] : [],
         comfyuiProxyUrl: channel?.comfyuiProxyUrl !== undefined ? channel.comfyuiProxyUrl : isCloud ? "" : "http://127.0.0.1:8188",
         comfyuiProxyToken: channel?.comfyuiProxyToken !== undefined ? channel.comfyuiProxyToken : "",
+        supportedModelIds: channel?.supportedModelIds !== undefined
+            ? mergeBuiltinSupportedModelIds(channel.supportedModelIds)
+            : [...DEFAULT_SUPPORTED_MODEL_IDS],
         workflows: mergeBuiltinWorkflows(channel?.workflows, defaultWorkflowItems),
         comfyuiT2iWorkflow: channel?.comfyuiT2iWorkflow !== undefined ? channel.comfyuiT2iWorkflow : workflows.t2i,
         comfyuiI2iWorkflow: channel?.comfyuiI2iWorkflow !== undefined ? channel.comfyuiI2iWorkflow : workflows.i2i,
@@ -713,8 +919,8 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
     return {
         ...config,
         model: modelOptionName(value || config.model),
-        baseUrl: channel.baseUrl || channel.comfyuiProxyUrl,
-        apiKey: channel.apiKey || channel.comfyuiProxyToken,
+        baseUrl: channel.baseUrl || channel.comfyuiProxyUrl || "",
+        apiKey: channel.apiKey || channel.comfyuiProxyToken || "",
         apiFormat: channel.apiFormat,
     };
 }

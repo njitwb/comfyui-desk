@@ -1,5 +1,8 @@
 import { defaultConfig, findWorkflow, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
+import { getModelProfile, resolveModelIdFromWorkflowId } from "@/services/api/models";
+import { normalizeVideoSizeValue } from "@/components/video-settings-panel";
 import i18n from "@/i18n";
+import { TaskExecutionError } from "@/services/api/task";
 import { imageToDataUrl, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
@@ -8,7 +11,21 @@ import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-p
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
 import type { ReferenceImage } from "@/types/image";
 import { nanoid } from "nanoid";
-import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasGenerationIntent, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
+import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasGenerationIntent, type CanvasGenerationReferenceSnapshot, type CanvasNodeData, type CanvasNodeMetadata } from "@/types/canvas";
+
+export function getVideoToolCategory(config: AiConfig, node?: CanvasNodeData) {
+    const workflowId = node?.metadata?.workflowId || config.workflowId;
+    if (!workflowId) return undefined;
+    const workflow = findWorkflow(config, node?.metadata?.channelId || config.channelId, workflowId);
+    return workflow?.id === workflowId && (workflow.category === "faceRefine" || workflow.category === "depthVideo") ? workflow.category : undefined;
+}
+
+export function snapshotVideoToolInputs(source: CanvasNodeData, images: ReferenceImage[] = []): CanvasGenerationReferenceSnapshot[] {
+    return [
+        { nodeId: source.id, kind: "video", storageKey: source.metadata?.storageKey, url: source.metadata?.storageKey ? undefined : source.metadata?.content, mimeType: source.metadata?.mimeType || "video/mp4" },
+        ...images.map((image): CanvasGenerationReferenceSnapshot => ({ nodeId: image.id, kind: "image", storageKey: image.storageKey, url: image.storageKey ? undefined : image.url || image.dataUrl, mimeType: image.type })),
+    ];
+}
 
 export function imageExtension(dataUrl: string) {
     return dataUrl.match(/^data:image[/]([^;]+)/)?.[1] || dataUrl.match(/image[/]([^;]+)/)?.[1] || "png";
@@ -133,21 +150,32 @@ export function getInputSummary(inputs: NodeGenerationInput[]) {
 }
 
 export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefined, mode: CanvasNodeGenerationMode): AiConfig {
-    const model = resolveModelForCapability(config, node?.metadata?.model, mode);
+    const videoTool = mode === "video" && getVideoToolCategory(config, node);
+    const rawModel = videoTool
+        ? undefined
+        : node?.metadata?.modelId || (node?.metadata?.workflowId ? resolveModelIdFromWorkflowId(node.metadata.workflowId) : undefined) || node?.metadata?.model;
     const channelId = node?.metadata?.channelId || config.channelId;
     const workflowId = node?.metadata?.workflowId || config.workflowId;
+    const model = videoTool ? workflowId! : resolveModelForCapability(config, rawModel, mode);
     let videoMode = node?.metadata?.videoMode;
-    if (mode === "video" && workflowId) {
+    if (mode === "video" && node?.metadata?.modelId) {
+        videoMode = node.metadata.modelId.includes("frame") ? "frame" : "omni";
+    }
+    if (mode === "video" && workflowId && !videoMode) {
         const wf = findWorkflow(config, channelId, workflowId);
         if (wf?.category === "frameVideo") videoMode = "frame";
         else if (wf?.category === "omniVideo" || wf?.category === "faceRefine") videoMode = "omni";
     }
-    if (videoMode === "frame" && (workflowId ? findWorkflow(config, channelId, workflowId)?.category === "faceRefine" : false)) {
+    if (videoTool) {
         videoMode = "omni";
     }
     if (!videoMode) {
         videoMode = config.videoMode || defaultConfig.videoMode || "omni";
     }
+
+    const rawSize = node?.metadata?.size || config.size || defaultConfig.size;
+    const modelProfile = mode === "video" && !videoTool ? getModelProfile(model) : undefined;
+    const size = mode === "video" && !videoTool ? normalizeVideoSizeValue(rawSize, modelProfile) : rawSize;
 
     return {
         ...config,
@@ -160,7 +188,7 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
         audioModel: mode === "audio" ? model : config.audioModel,
         reasoningEffort: node?.metadata?.reasoningEffort || config.reasoningEffort || defaultConfig.reasoningEffort,
         quality: node?.metadata?.quality || config.quality || defaultConfig.quality,
-        size: node?.metadata?.size || config.size || defaultConfig.size,
+        size,
         background: node?.metadata?.background ?? config.background ?? defaultConfig.background,
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
         audioSeconds: node?.metadata?.seconds || config.audioSeconds || defaultConfig.audioSeconds || "60",
@@ -176,21 +204,213 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
     };
 }
 
-export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
-    return nodes.map((node) =>
-        node.metadata?.status === "loading"
-            ? {
-                  ...node,
-                  metadata: {
-                      ...node.metadata,
-                      status: "error" as const,
-                      errorDetails: i18n.t("canvas.generation.interrupted"),
-                      images: node.metadata.images?.map((image) => (image.status === "loading" ? { ...image, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : image)),
-                      texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : text)),
-                  },
-              }
-            : node,
+export function isInterruptedGenerationError(errorDetails?: string) {
+    if (!errorDetails) return false;
+    return (
+        errorDetails === "Generation was interrupted by a page refresh. Generate again." ||
+        errorDetails === "页面刷新后生成已中断，请重新生成。" ||
+        errorDetails === "canvas.generation.interrupted" ||
+        errorDetails.includes("Generation was interrupted by a page refresh") ||
+        errorDetails.includes("页面刷新后生成已中断")
     );
+}
+
+export function isCancelledGenerationError(error: unknown): boolean {
+    if (!error) return false;
+    if (error instanceof TaskExecutionError && error.category === "cancelled") return true;
+    const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name) : "";
+    if (name === "ComfyuiJobCancelledError" || name === "ComfyuiAbortedError") return true;
+    const msg = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    return msg.includes("已取消") || msg.toLowerCase().includes("cancelled") || msg.includes("execution_interrupted");
+}
+
+export function isLostOrNotFoundGenerationError(error: unknown): boolean {
+    if (!error) return false;
+    if (error instanceof TaskExecutionError && error.category === "lost") return true;
+    const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name) : "";
+    if (name === "ComfyuiJobLostError" || name === "ComfyuiJobNotFoundError") return true;
+    const msg = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    return msg.includes("丢失") || msg.includes("不存在") || msg.toLowerCase().includes("job lost") || msg.toLowerCase().includes("not found");
+}
+
+export function isNetworkGenerationError(error: unknown): boolean {
+    if (!error) return false;
+    if (error instanceof TaskExecutionError && error.category === "network") return true;
+    const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name) : "";
+    if (name === "ComfyuiNetworkError" || name === "ComfyuiMixedContentError") return true;
+    const msg = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    return (
+        msg.includes("无法连接 ComfyUI") ||
+        msg.includes("本地网络连接已断开") ||
+        msg.includes("Failed to fetch") ||
+        msg.includes("Load failed") ||
+        msg.includes("NetworkError") ||
+        msg.includes("ECONNREFUSED") ||
+        msg.includes("MixedContent")
+    );
+}
+
+export function isTimeoutGenerationError(error: unknown): boolean {
+    if (!error) return false;
+    if (error instanceof TaskExecutionError && error.category === "timeout") return true;
+    const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name) : "";
+    if (name === "ComfyuiTimeoutError") return true;
+    const msg = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    return msg.toLowerCase().includes("timeout") || msg.includes("超时");
+}
+
+export function isJobExecutionError(error: unknown): boolean {
+    if (!error) return false;
+    if (error instanceof TaskExecutionError && error.category === "execution_failed") return true;
+    const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name) : "";
+    return name === "ComfyuiJobError";
+}
+
+export function localizeErrorDetails(errorDetails?: string): string | undefined {
+    if (!errorDetails) return undefined;
+    if (isInterruptedGenerationError(errorDetails)) {
+        return i18n.t("canvas.generation.interrupted");
+    }
+    if (
+        errorDetails === "Failed to fetch" ||
+        errorDetails === "Load failed" ||
+        errorDetails === "NetworkError"
+    ) {
+        return "无法连接 ComfyUI 服务，请检查服务状态与网络设置";
+    }
+    if (
+        errorDetails === "生成失败" ||
+        errorDetails === "Generation failed" ||
+        errorDetails === "canvas.projectPage.generationFailed"
+    ) {
+        return i18n.t("canvas.projectPage.generationFailed");
+    }
+    if (
+        errorDetails === "部分生成失败" ||
+        errorDetails === "Partial generation failed" ||
+        errorDetails === "canvas.projectPage.partialFailed"
+    ) {
+        return i18n.t("canvas.projectPage.partialFailed");
+    }
+    if (
+        errorDetails === "全部生成失败" ||
+        errorDetails === "All generations failed" ||
+        errorDetails === "canvas.projectPage.allFailed"
+    ) {
+        return i18n.t("canvas.projectPage.allFailed");
+    }
+    if (
+        errorDetails === "部分文本生成失败" ||
+        errorDetails === "Partial text generation failed" ||
+        errorDetails === "canvas.projectPage.partialTextFailed"
+    ) {
+        return i18n.t("canvas.projectPage.partialTextFailed");
+    }
+    return errorDetails;
+}
+
+type ProgressMeta = {
+    progressPct?: number;
+    progressNodeClassType?: string;
+    progressNodeStep?: number;
+    progressNodeSteps?: number;
+};
+
+/**
+ * 计算节点加载中文案（优先级：重连提示 > 排队位次 > 常规生成中）。
+ * 进度本身由进度条呈现，不进这里，避免同一屏出现两套进度表达。
+ */
+export function formatNodeLoadingText(meta?: { queuePosition?: number; networkRetryText?: string } & ProgressMeta): string {
+    if (meta?.networkRetryText) {
+        return meta.networkRetryText;
+    }
+    if (typeof meta?.queuePosition === "number" && meta.queuePosition > 0) {
+        return `排队中 (第 ${meta.queuePosition} 位)`;
+    }
+    return i18n.t("canvas.node.generating");
+}
+
+/**
+ * 进度条下方的阶段说明：把后端 class_type 翻成当前语言的短标签。
+ * 未收录的类型一律不显示，宁可少一行字也不把 SamplerCustomAdvanced 这类名字漏给用户。
+ */
+export function formatProgressCaption(meta?: ProgressMeta): string | undefined {
+    const classType = meta?.progressNodeClassType;
+    if (!classType) return undefined;
+    const labels = i18n.t("canvas.node.progressNodeLabels", { returnObjects: true }) as Record<string, string> | string;
+    const label = typeof labels === "object" && labels ? labels[classType] : undefined;
+    if (!label) return undefined;
+    const steps = meta?.progressNodeSteps;
+    if (typeof steps === "number" && steps > 1) {
+        return `${label} ${Math.round(meta?.progressNodeStep ?? 0)}/${Math.round(steps)}`;
+    }
+    return label;
+}
+
+export function hasInterruptedGeneration(node: CanvasNodeData): boolean {
+    if (node.metadata?.status === "error" && isInterruptedGenerationError(node.metadata?.errorDetails)) {
+        return true;
+    }
+    if (node.metadata?.images?.some((image) => image.status === "error" && isInterruptedGenerationError(image.errorDetails))) {
+        return true;
+    }
+    if (node.metadata?.texts?.some((text) => text.status === "error" && isInterruptedGenerationError(text.errorDetails))) {
+        return true;
+    }
+    return false;
+}
+
+export function countInterruptedTasks(nodes: CanvasNodeData[]): number {
+    let count = 0;
+    for (const node of nodes) {
+        if (!hasInterruptedGeneration(node)) continue;
+        const interruptedImages = node.metadata?.images?.filter((img) => img.status === "error" && isInterruptedGenerationError(img.errorDetails));
+        if (interruptedImages && interruptedImages.length > 0) {
+            count += interruptedImages.length;
+        } else {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
+    return nodes.map((node) => {
+        const hasInterruptedImages = node.metadata?.images?.some(
+            (image) => image.status === "loading" || isInterruptedGenerationError(image.errorDetails),
+        );
+        const hasInterruptedTexts = node.metadata?.texts?.some(
+            (text) => text.status === "loading" || isInterruptedGenerationError(text.errorDetails),
+        );
+        const isInterrupted = node.metadata?.status === "loading" || isInterruptedGenerationError(node.metadata?.errorDetails) || hasInterruptedImages || hasInterruptedTexts;
+        if (isInterrupted) {
+            const rootJobId = node.metadata?.jobId;
+            return {
+                ...node,
+                metadata: {
+                    ...node.metadata,
+                    status: "error" as const,
+                    errorDetails: i18n.t("canvas.generation.interrupted"),
+                    images: node.metadata?.images?.map((image) =>
+                        image.status === "loading" || isInterruptedGenerationError(image.errorDetails)
+                            ? {
+                                  ...image,
+                                  status: "error" as const,
+                                  errorDetails: i18n.t("canvas.generation.interrupted"),
+                                  ...(image.jobId || rootJobId ? { jobId: image.jobId || rootJobId } : {}),
+                              }
+                            : image,
+                    ),
+                    texts: node.metadata?.texts?.map((text) =>
+                        text.status === "loading" || isInterruptedGenerationError(text.errorDetails)
+                            ? { ...text, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") }
+                            : text,
+                    ),
+                },
+            };
+        }
+        return node;
+    });
 }
 
 export function isGenerationCanceled(error: unknown) {
@@ -337,3 +557,55 @@ export function buildPastedNodeConnections(
     return result;
 }
 
+/**
+ * 生成生命周期回调可携带的瞬态字段，键名与画布节点 metadata 保持一致。
+ * 各调用点共用该类型，避免新增字段时逐处补写而漏掉某条链路。
+ */
+export type NodeGenerationProgressDetail = {
+    jobId?: string;
+    queuePosition?: number;
+    message?: string;
+    progressPct?: number;
+    progressNodeClassType?: string;
+    progressNodeStep?: number;
+    progressNodeSteps?: number;
+};
+
+/**
+ * 统一更新画布节点在生成生命周期中的进度与瞬态字段（submitted、pending、running、network_retry）
+ */
+const CLEARED_PROGRESS = { progressPct: undefined, progressNodeClassType: undefined, progressNodeStep: undefined, progressNodeSteps: undefined };
+
+export function updateNodeGenerationProgress(
+    nodes: CanvasNodeData[],
+    targetNodeId: string,
+    status: string,
+    detail?: NodeGenerationProgressDetail,
+    slotId?: string,
+): CanvasNodeData[] {
+    const hasProgress = status === "running" && typeof detail?.progressPct === "number";
+    const patch = {
+        ...(status === "submitted" && detail?.jobId ? { jobId: detail.jobId, networkRetryText: undefined } : {}),
+        ...(status === "pending" && typeof detail?.queuePosition === "number" ? { queuePosition: detail.queuePosition, networkRetryText: undefined, ...CLEARED_PROGRESS } : {}),
+        ...(status === "running"
+            ? hasProgress
+                ? { queuePosition: undefined, networkRetryText: undefined, progressPct: detail!.progressPct, progressNodeClassType: detail!.progressNodeClassType, progressNodeStep: detail!.progressNodeStep, progressNodeSteps: detail!.progressNodeSteps }
+                : { queuePosition: undefined, networkRetryText: undefined, ...CLEARED_PROGRESS }
+            : {}),
+        ...(status === "network_retry" ? { networkRetryText: detail?.message || "服务重连中..." } : {}),
+    };
+    return nodes.map((node) => {
+        if (node.id !== targetNodeId) return node;
+        const metadata = node.metadata || {};
+        const slots = metadata.images?.length ? metadata.images : metadata.texts;
+        return {
+            ...node,
+            metadata: {
+                ...metadata,
+                ...(!slots?.length || slots.length === 1 ? patch : {}),
+                images: metadata.images?.map((slot) => !slotId || slot.id === slotId ? { ...slot, ...patch } : slot),
+                texts: metadata.texts?.map((slot) => !slotId || slot.id === slotId ? { ...slot, ...patch } : slot),
+            },
+        };
+    });
+}

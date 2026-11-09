@@ -1,3 +1,5 @@
+import type { ModelSupportedTools } from "@/services/api/models/types";
+
 export type Position = {
     x: number;
     y: number;
@@ -47,6 +49,12 @@ export type CanvasNodeImage = {
     mimeType: string;
     seed?: number;
     jobId?: string;
+    queuePosition?: number;
+    networkRetryText?: string;
+    progressPct?: number;
+    progressNodeClassType?: string;
+    progressNodeStep?: number;
+    progressNodeSteps?: number;
     isTimeout?: boolean;
 };
 
@@ -56,6 +64,12 @@ export type CanvasNodeText = {
     errorDetails?: string;
     content: string;
     jobId?: string;
+    queuePosition?: number;
+    networkRetryText?: string;
+    progressPct?: number;
+    progressNodeClassType?: string;
+    progressNodeStep?: number;
+    progressNodeSteps?: number;
     isTimeout?: boolean;
 };
 
@@ -67,6 +81,12 @@ export type CanvasNodeMetadata = {
     generationReferences?: CanvasGenerationReferenceSnapshot[];
     generationOriginNodeId?: string;
     jobId?: string;
+    queuePosition?: number;
+    networkRetryText?: string;
+    progressPct?: number;
+    progressNodeClassType?: string;
+    progressNodeStep?: number;
+    progressNodeSteps?: number;
     isTimeout?: boolean;
     status?: CanvasNodeStatus;
     errorDetails?: string;
@@ -76,6 +96,7 @@ export type CanvasNodeMetadata = {
     channelId?: string;
     workflowId?: string;
     model?: string;
+    modelId?: string;
     reasoningEffort?: "auto" | "low" | "medium" | "high" | "xhigh";
     size?: string;
     quality?: string;
@@ -106,6 +127,11 @@ export type CanvasNodeMetadata = {
     durationMs?: number;
     groupId?: string;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
+    supportedTools?: ModelSupportedTools;
+    maxLength?: number;
+    thinking?: boolean;
+    audioSeconds?: string;
+    isSubject?: boolean;
 };
 
 export type CanvasNodeData = {

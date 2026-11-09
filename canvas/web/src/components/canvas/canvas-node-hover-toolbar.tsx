@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { App, Modal, Segmented, Tooltip } from "antd";
 import { CheckSquare, Download, Ellipsis, Eye, FolderPlus, Image as ImageIcon, Info, Layers, Maximize2, MessageSquare, Minus, Music, Music2, Plus, RefreshCw, Settings2, SmilePlus, Trash2, Ungroup, Upload, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -13,10 +13,14 @@ import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/t
 import type { CanvasNodeToolbarItem } from "@/types/canvas-plugin";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
 import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
+import { localizeErrorDetails } from "@/lib/canvas/canvas-generation-helpers";
+import { getModelProfile } from "@/services/api/models";
+import { getCanvasNodeToolbarPlacement } from "@/lib/canvas/canvas-node-toolbar-placement";
 
 type CanvasNodeHoverToolbarProps = {
     node: CanvasNodeData | null;
     viewport: ViewportTransform;
+    canvasSize: { width: number; height: number };
     onKeep: (nodeId: string) => void;
     onLeave: () => void;
     onInfo: (node: CanvasNodeData) => void;
@@ -31,8 +35,8 @@ type CanvasNodeHoverToolbarProps = {
     onCrop: (node: CanvasNodeData) => void;
     onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
-    onSuperResolve: (node: CanvasNodeData) => void;
-    onAngle: (node: CanvasNodeData) => void;
+    onSuperResolve?: (node: CanvasNodeData) => void;
+    onAngle?: (node: CanvasNodeData) => void;
     onViewImage: (node: CanvasNodeData) => void;
     onReversePrompt: (node: CanvasNodeData) => void;
     onFaceRefine?: (node: CanvasNodeData) => void;
@@ -61,6 +65,7 @@ type ToolbarTool = {
 export function CanvasNodeHoverToolbar({
     node,
     viewport,
+    canvasSize,
     onKeep,
     onLeave,
     onInfo,
@@ -104,6 +109,18 @@ export function CanvasNodeHoverToolbar({
     const { message } = App.useApp();
     const { t } = useTranslation();
     const copyText = useCopyText();
+    const toolbarRef = useRef<HTMLDivElement>(null);
+    const [toolbarWidth, setToolbarWidth] = useState(0);
+
+    useLayoutEffect(() => {
+        const element = toolbarRef.current;
+        if (!element) return;
+        const measure = () => setToolbarWidth(element.getBoundingClientRect().width);
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [node, canvasSize.width]);
 
     useEffect(() => {
         try {
@@ -120,17 +137,10 @@ export function CanvasNodeHoverToolbar({
     if (!node) return null;
 
     const activeNode = node;
-    const nodeTopScreen = viewport.y + node.position.y * viewport.k;
-    const nodeBottomScreen = viewport.y + (node.position.y + node.height) * viewport.k;
-    const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
-
-    // 为节点顶部标题预留清晰的安全纵向空间，避免工具栏与标题重叠
-    const titleGap = Math.max(28 * viewport.k, 24) + 8;
-    const toolbarHeight = 48;
-    const safeTopMargin = 60;
-    const isTopOverflow = nodeTopScreen - titleGap - toolbarHeight < safeTopMargin;
-    const placement: "top" | "bottom" = isTopOverflow ? "bottom" : "top";
-    const top = isTopOverflow ? nodeBottomScreen + 16 : nodeTopScreen - titleGap;
+    const { left, top, placement } = getCanvasNodeToolbarPlacement(node, viewport);
+    const maxWidth = Math.max(0, canvasSize.width - 32);
+    const width = Math.min(toolbarWidth, maxWidth);
+    const clampedLeft = Math.max(16 + width / 2, Math.min(canvasSize.width - 16 - width / 2, left));
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
     const isAudio = node.type === CanvasNodeType.Audio;
@@ -150,7 +160,12 @@ export function CanvasNodeHoverToolbar({
         }
         copyText(prompt, t("common.promptCopied"));
     };
-    const imageTools = buildImageToolbarTools(node, { onUpload, onToggleFreeResize, onMaskEdit, onCrop, onSplit, onUpscale, onSuperResolve, onAngle, onViewImage, onCopyPrompt: copyImagePrompt, onReversePrompt });
+    const nodeProfile = getModelProfile(node.metadata?.modelId || node.metadata?.model);
+    const supportedTools = node.metadata?.supportedTools || nodeProfile?.supportedTools;
+    const canFaceRefine = hasVideo && Boolean(supportedTools?.faceRefine);
+    const canDepthVideo = hasVideo && Boolean(supportedTools?.depthVideo ?? true);
+
+    const imageTools = buildImageToolbarTools(node, { onUpload, onToggleFreeResize, onMaskEdit, onCrop, onSplit, onUpscale, onViewImage, onCopyPrompt: copyImagePrompt, onReversePrompt }, supportedTools);
 
     function openImageToolSettings() {
         onKeep(activeNode.id);
@@ -211,8 +226,8 @@ export function CanvasNodeHoverToolbar({
         ...(hasImage || hasVideo || hasAudio || isText ? [{ id: "saveAsset", title: t("common.addToAssets"), label: t("canvas.nodeToolbar.saveAsset"), icon: <FolderPlus className="size-4" />, onClick: () => onSaveAsset(node) }] : []),
         ...(hasImage || hasVideo || hasAudio ? [{ id: "download", title: t(hasAudio ? "canvas.nodeToolbar.downloadAudio" : hasVideo ? "canvas.nodeToolbar.downloadVideo" : "canvas.nodeToolbar.downloadImage"), label: t("common.download"), icon: <Download className="size-4" />, onClick: () => onDownload(node) }] : []),
         ...(hasVideo ? [{ id: "separateAudio", title: t("canvas.nodeToolbar.separateAudio"), label: t("canvas.nodeToolbar.separateAudio"), icon: <Music className="size-4" />, onClick: () => onSeparateAudio?.(node) }] : []),
-        ...(hasVideo ? [{ id: "faceRefine", title: "人脸修复", label: "人脸修复", icon: <SmilePlus className="size-4" />, onClick: () => onFaceRefine?.(node) }] : []),
-        ...(hasVideo ? [{ id: "depthVideo", title: t("canvas.nodeToolbar.depthVideo"), label: t("canvas.nodeToolbar.depthVideo"), icon: <Layers className="size-4" />, onClick: () => onDepthVideo?.(node) }] : []),
+        ...(canFaceRefine ? [{ id: "faceRefine", title: "人脸修复", label: "人脸修复", icon: <SmilePlus className="size-4" />, onClick: () => onFaceRefine?.(node) }] : []),
+        ...(canDepthVideo ? [{ id: "depthVideo", title: t("canvas.nodeToolbar.depthVideo"), label: t("canvas.nodeToolbar.depthVideo"), icon: <Layers className="size-4" />, onClick: () => onDepthVideo?.(node) }] : []),
         ...(hasVideo ? [{ id: "viewVideo", title: t("canvas.nodeToolbar.viewVideo"), label: t("canvas.nodeToolbar.viewVideo"), icon: <Eye className="size-4" />, onClick: () => onViewImage(node) }] : []),
         ...(isVideo || isAudio ? [{ id: "edit", title: t("common.edit"), label: t("common.edit"), icon: <MessageSquare className="size-4" />, onClick: () => onToggleDialog(node) }] : []),
         ...(isText && node.metadata?.status !== "loading" ? [{ id: "generateImage", title: t("canvas.node.generateImage"), label: t("canvas.node.generate"), icon: <ImageIcon className="size-4" />, onClick: () => onGenerateImage(node) }] : []),
@@ -254,10 +269,12 @@ export function CanvasNodeHoverToolbar({
     return (
         <>
             <div
-                className={`absolute z-[70] flex h-12 -translate-x-1/2 items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)] transition-transform duration-150 ${
+                ref={toolbarRef}
+                data-canvas-node-toolbar
+                className={`thin-scrollbar absolute z-[70] flex h-12 -translate-x-1/2 items-center overflow-x-auto rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)] transition-transform duration-150 [&>*]:shrink-0 ${
                     placement === "top" ? "-translate-y-full" : "translate-y-0"
                 }`}
-                style={{ left, top }}
+                style={{ left: clampedLeft, top, width: "max-content", maxWidth }}
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
                     if (!imageToolSettingsOpen) onLeave();
@@ -341,12 +358,15 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                             <InfoRow label={t("canvas.nodeToolbar.size")} value={`${Math.round(node.width)} x ${Math.round(node.height)}`} />
                             <InfoRow label={t("canvas.nodeToolbar.position")} value={`${Math.round(node.position.x)}, ${Math.round(node.position.y)}`} />
                             <InfoRow label={t("canvas.nodeToolbar.status")} value={node.metadata?.status || "idle"} />
+                            {(node.metadata?.modelId || node.metadata?.model) ? (
+                                <InfoRow label={t("workbench.model")} value={(node.metadata?.modelId && getModelProfile(node.metadata.modelId)?.name) || node.metadata?.modelId || node.metadata?.model} />
+                            ) : null}
                             {batchCount > 1 ? <InfoRow label={t("canvas.nodeToolbar.imageGroup")} value={t("canvas.configNode.images", { count: batchCount })} /> : null}
                             {node.metadata?.prompt ? <InfoRow label={t("canvas.configNode.prompt")} value={node.metadata.prompt} /> : null}
                             {imageBytes ? <InfoRow label={t("canvas.nodeToolbar.imageSize")} value={formatBytes(imageBytes)} /> : null}
                             {node.metadata?.errorDetails ? (
                                 <div className="rounded-lg border p-3 text-red-400" style={{ borderColor: theme.node.stroke }}>
-                                    {node.metadata.errorDetails}
+                                    {localizeErrorDetails(node.metadata.errorDetails)}
                                 </div>
                             ) : null}
                         </div>

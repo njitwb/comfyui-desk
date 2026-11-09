@@ -1,20 +1,77 @@
 import { nanoid } from "nanoid";
 import { getNodeSpec, NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
-import type { AiConfig } from "@/stores/use-config-store";
+import { getDefaultWorkflow, type AiConfig } from "@/stores/use-config-store";
+import { getModelProfile, resolveModelIdFromWorkflowId } from "@/services/api/models";
+import { normalizeVideoSizeValue } from "@/components/video-settings-panel";
 import type { UploadedImage } from "@/services/image-storage";
 import type { UploadedFile } from "@/services/file-storage";
 import type { ReferenceImage } from "@/types/image";
 import { CanvasNodeType, type CanvasImageGenerationType, type CanvasNodeData, type CanvasNodeImage, type CanvasNodeMetadata, type CanvasNodeText, type CanvasNodeTypeId, type Position } from "@/types/canvas";
 
-export function createCanvasNode(type: CanvasNodeTypeId, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
+export function createDefaultNodeMetadata(type: CanvasNodeTypeId, config: AiConfig): CanvasNodeMetadata | undefined {
+    const activeChannel = (config.channelId ? config.channels?.find((c) => c.id === config.channelId) : undefined) || config.channels?.[0];
+    if (!activeChannel) return undefined;
+
+    if (type === CanvasNodeType.Image) {
+        const wf = getDefaultWorkflow(activeChannel, "t2i");
+        const modelId = (wf ? resolveModelIdFromWorkflowId(wf.id) || getModelProfile(wf.id)?.id : undefined) || "image-qwen-2.1";
+        return {
+            channelId: activeChannel.id,
+            ...(wf ? { workflowId: wf.id } : {}),
+            modelId,
+        };
+    }
+    if (type === CanvasNodeType.Video) {
+        const wf = getDefaultWorkflow(activeChannel, "omniVideo");
+        const modelId = (wf ? resolveModelIdFromWorkflowId(wf.id) || getModelProfile(wf.id)?.id : undefined) || "omni-video-minimax-h3-fp8-4step-pdmd";
+        const profile = getModelProfile(modelId);
+        return {
+            channelId: activeChannel.id,
+            ...(wf ? { workflowId: wf.id } : {}),
+            modelId,
+            videoMode: wf?.category === "frameVideo" ? "frame" : "omni",
+            seconds: config.videoSeconds || "5",
+            size: normalizeVideoSizeValue(config.size, profile),
+        };
+    }
+    if (type === CanvasNodeType.Text) {
+        const wf = getDefaultWorkflow(activeChannel, "text");
+        const modelId = (wf ? resolveModelIdFromWorkflowId(wf.id) || getModelProfile(wf.id)?.id : undefined) || "text-qwen-35";
+        return {
+            channelId: activeChannel.id,
+            ...(wf ? { workflowId: wf.id } : {}),
+            modelId,
+            fontSize: 14,
+        };
+    }
+    if (type === CanvasNodeType.Audio) {
+        const wf = getDefaultWorkflow(activeChannel, "audio");
+        const modelId = (wf ? resolveModelIdFromWorkflowId(wf.id) || getModelProfile(wf.id)?.id : undefined) || "audio-minimax-music-3";
+        return {
+            channelId: activeChannel.id,
+            ...(wf ? { workflowId: wf.id } : {}),
+            modelId,
+        };
+    }
+    if (type === CanvasNodeType.Config) {
+        return {
+            model: config.imageModel || config.model,
+            size: config.size,
+            count: Number(config.canvasImageCount || config.count) || 1,
+        };
+    }
+    return undefined;
+}
+
+export function createCanvasNode(type: CanvasNodeTypeId, position: Position, metadata?: CanvasNodeMetadata, title?: string): CanvasNodeData {
     const spec = getNodeSpec(type);
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
     return {
         id,
         type,
-        title: spec.title,
+        title: title || spec.title,
         position: {
             x: position.x - spec.width / 2,
             y: position.y - spec.height / 2,
@@ -83,8 +140,19 @@ export function cloneNodeMetadata(metadata?: CanvasNodeMetadata, nodeType?: Canv
 
     // 1. 重置瞬时任务与报错标记
     delete cloned.jobId;
+    delete cloned.queuePosition;
+    delete cloned.networkRetryText;
+    delete cloned.progressPct;
+    delete cloned.progressNodeClassType;
+    delete cloned.progressNodeStep;
+    delete cloned.progressNodeSteps;
     delete cloned.errorDetails;
     delete cloned.isTimeout;
+
+    // 2. 复制时将活跃草稿 (composerContent) 提拔为 official prompt，并清除 draft 避免影子遮蔽
+    const activePrompt = cloned.composerContent ?? cloned.prompt;
+    if (activePrompt !== undefined) cloned.prompt = activePrompt;
+    delete cloned.composerContent;
 
     const targetType = nodeType || (cloned.generationMode as CanvasNodeType) || undefined;
 

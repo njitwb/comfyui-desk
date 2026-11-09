@@ -1,17 +1,59 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { TaskExecutionError } from "@/services/api/task";
 
 import {
     buildGeneratedNodeConnections,
+    buildGenerationConfig,
     buildPastedNodeConnections,
+    countInterruptedTasks,
     duplicateIncomingConnections,
     findRetrySourceNode,
+    formatNodeLoadingText,
+    formatProgressCaption,
     generateNextSeed,
+    getVideoToolCategory,
+    hasInterruptedGeneration,
+    isCancelledGenerationError,
     isGenerationCanceled,
+    isInterruptedGenerationError,
+    isJobExecutionError,
+    isLostOrNotFoundGenerationError,
+    isNetworkGenerationError,
+    isTimeoutGenerationError,
+    resetInterruptedGeneration,
     restoreGenerationContext,
     shouldMarkGenerationSourceStatus,
+    updateNodeGenerationProgress,
 } from "@/lib/canvas/canvas-generation-helpers";
 import { CanvasNodeType } from "@/types/canvas";
-import type { CanvasConnection, CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
+import type { CanvasConnection, CanvasNodeData, CanvasNodeImage, CanvasNodeMetadata } from "@/types/canvas";
+import { defaultConfig, encodeChannelModel, isAiConfigReady, type AiConfig } from "@/stores/use-config-store";
+
+describe("video tool configuration", () => {
+    const sourceModel = "frame-video-minimax-h3-fp8-4step-pdmd";
+    const config: AiConfig = {
+        ...defaultConfig,
+        channelId: "source-host",
+        videoModel: encodeChannelModel("source-host", sourceModel),
+        channels: [
+            { ...defaultConfig.channels[0], id: "source-host", comfyuiProxyUrl: "", models: [{ name: sourceModel, capability: "video" }] },
+            { ...defaultConfig.channels[0], id: "tool-host", comfyuiProxyUrl: "http://tool-host:8188", workflows: [{ id: "face-tool", name: "修复", category: "faceRefine", createdAt: 0, json: {} }] },
+        ],
+    };
+
+    it("checks readiness on the tool host even when the source model host is unconfigured", () => {
+        const node = makeNode(CanvasNodeType.Video, { channelId: "tool-host", workflowId: "face-tool", modelId: encodeChannelModel("source-host", sourceModel), videoMode: "frame" });
+        const result = buildGenerationConfig(config, node, "video");
+        expect(result.videoMode).toBe("omni");
+        expect(result.model).toBe("face-tool");
+        expect(isAiConfigReady(result, result.model)).toBe(true);
+    });
+
+    it("does not classify missing workflow selections using an unrelated default tool", () => {
+        expect(getVideoToolCategory(config, makeNode(CanvasNodeType.Video, { channelId: "tool-host" }))).toBeUndefined();
+        expect(getVideoToolCategory(config, makeNode(CanvasNodeType.Video, { channelId: "tool-host", workflowId: "deleted-workflow" }))).toBeUndefined();
+    });
+});
 
 // Small shared factory so each test case can build minimal nodes with one call.
 function makeNode(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {}, id?: string): CanvasNodeData {
@@ -28,6 +70,10 @@ function makeNode(type: CanvasNodeData["type"], metadata: CanvasNodeMetadata = {
 
 function makeConnection(fromNodeId: string, toNodeId: string, kind: CanvasConnection["kind"]): CanvasConnection {
     return { id: `conn-${fromNodeId}->${toNodeId}-${kind}`, fromNodeId, toNodeId, kind };
+}
+
+function makeImageSlot(id: string, status: CanvasNodeImage["status"], extra: Partial<CanvasNodeImage> = {}): CanvasNodeImage {
+    return { id, status, content: "data:image", storageKey: "", naturalWidth: 1, naturalHeight: 1, bytes: 1, mimeType: "image/png", ...extra };
 }
 
 describe("shouldMarkGenerationSourceStatus", () => {
@@ -336,4 +382,238 @@ describe("buildPastedNodeConnections", () => {
         expect(result).toHaveLength(0);
     });
 });
+
+describe("hasInterruptedGeneration and countInterruptedTasks", () => {
+    it("detects node-level interrupted generation", () => {
+        const interruptedNode = makeNode(CanvasNodeType.Image, {
+            status: "error",
+            errorDetails: "页面刷新后生成已中断，请重新生成。",
+        });
+        const normalNode = makeNode(CanvasNodeType.Image, {
+            status: "success",
+            content: "data:image/png;base64,xx",
+        });
+        const otherErrorNode = makeNode(CanvasNodeType.Image, {
+            status: "error",
+            errorDetails: "Server error 500",
+        });
+
+        expect(hasInterruptedGeneration(interruptedNode)).toBe(true);
+        expect(hasInterruptedGeneration(normalNode)).toBe(false);
+        expect(hasInterruptedGeneration(otherErrorNode)).toBe(false);
+    });
+
+    it("detects batch image slot interrupted generation", () => {
+        const batchNode = makeNode(CanvasNodeType.Image, {
+            status: "error",
+            images: [
+                makeImageSlot("img-1", "success", { content: "data:1" }),
+                makeImageSlot("img-2", "error", { errorDetails: "页面刷新后生成已中断，请重新生成。" }),
+            ],
+        });
+        expect(hasInterruptedGeneration(batchNode)).toBe(true);
+    });
+
+    it("counts interrupted tasks correctly including batch slots", () => {
+        const node1 = makeNode(CanvasNodeType.Image, {
+            status: "error",
+            errorDetails: "页面刷新后生成已中断，请重新生成。",
+        });
+        const node2 = makeNode(CanvasNodeType.Image, {
+            status: "error",
+            images: [
+                makeImageSlot("img-1", "success", { content: "data:1" }),
+                makeImageSlot("img-2", "error", { errorDetails: "页面刷新后生成已中断，请重新生成。" }),
+                makeImageSlot("img-3", "error", { errorDetails: "页面刷新后生成已中断，请重新生成。" }),
+            ],
+        });
+        const node3 = makeNode(CanvasNodeType.Video, {
+            status: "error",
+            errorDetails: "Generation was interrupted by a page refresh. Generate again.",
+        });
+        const nodeNormal = makeNode(CanvasNodeType.Text, { status: "success", content: "hi" });
+
+        expect(countInterruptedTasks([node1, node2, node3, nodeNormal])).toBe(4);
+    });
+
+    it("resets loading and interrupted sub-items properly", () => {
+        const loadingNode = makeNode(CanvasNodeType.Image, {
+            status: "loading",
+            images: [
+                makeImageSlot("img-1", "loading"),
+                makeImageSlot("img-2", "success", { content: "data:2" }),
+            ],
+        });
+        const [reset] = resetInterruptedGeneration([loadingNode]);
+        expect(reset.metadata?.status).toBe("error");
+        expect(isInterruptedGenerationError(reset.metadata?.errorDetails)).toBe(true);
+        expect(reset.metadata?.images?.[0].status).toBe("error");
+        expect(isInterruptedGenerationError(reset.metadata?.images?.[0].errorDetails)).toBe(true);
+        expect(reset.metadata?.images?.[1].status).toBe("success");
+    });
+});
+
+describe("error classification helpers", () => {
+    it("correctly identifies network errors", () => {
+        expect(isNetworkGenerationError(new TaskExecutionError("network err", "network"))).toBe(true);
+        expect(isNetworkGenerationError(new Error("Failed to fetch"))).toBe(true);
+        expect(isNetworkGenerationError(new Error("无法连接 ComfyUI 服务（http://192.168.31.188:8188）"))).toBe(true);
+        expect(isNetworkGenerationError(new Error("本地网络连接已断开，请检查网络设置"))).toBe(true);
+        expect(isNetworkGenerationError({ name: "ComfyuiNetworkError", message: "foo" })).toBe(true);
+        expect(isNetworkGenerationError(new Error("CUDA out of memory"))).toBe(false);
+    });
+
+    it("correctly identifies lost or not found errors", () => {
+        expect(isLostOrNotFoundGenerationError(new TaskExecutionError("task lost", "lost"))).toBe(true);
+        expect(isLostOrNotFoundGenerationError({ name: "ComfyuiJobLostError", message: "lost" })).toBe(true);
+        expect(isLostOrNotFoundGenerationError({ name: "ComfyuiJobNotFoundError", message: "not found" })).toBe(true);
+        expect(isLostOrNotFoundGenerationError(new Error("ComfyUI 任务已丢失"))).toBe(true);
+        expect(isLostOrNotFoundGenerationError(new Error("ComfyUI 任务不存在"))).toBe(true);
+        expect(isLostOrNotFoundGenerationError(new Error("other error"))).toBe(false);
+    });
+
+    it("correctly identifies cancelled errors without confusing with page refresh", () => {
+        expect(isCancelledGenerationError(new TaskExecutionError("user cancel", "cancelled"))).toBe(true);
+        expect(isCancelledGenerationError({ name: "ComfyuiJobCancelledError", message: "cancelled" })).toBe(true);
+        expect(isCancelledGenerationError({ name: "ComfyuiAbortedError", message: "aborted" })).toBe(true);
+        expect(isCancelledGenerationError(new Error("任务已取消"))).toBe(true);
+        expect(isInterruptedGenerationError("任务已取消")).toBe(false);
+        expect(isInterruptedGenerationError("页面刷新后生成已中断，请重新生成。")).toBe(true);
+    });
+
+    it("correctly identifies timeout and job errors", () => {
+        expect(isTimeoutGenerationError(new TaskExecutionError("timeout", "timeout"))).toBe(true);
+        expect(isTimeoutGenerationError({ name: "ComfyuiTimeoutError", message: "timeout" })).toBe(true);
+        expect(isTimeoutGenerationError(new Error("排队超时"))).toBe(true);
+        expect(isJobExecutionError(new TaskExecutionError("failed", "execution_failed"))).toBe(true);
+        expect(isJobExecutionError({ name: "ComfyuiJobError", message: "job err" })).toBe(true);
+        expect(isJobExecutionError(new Error("other"))).toBe(false);
+    });
+});
+
+describe("formatNodeLoadingText", () => {
+    it("prioritizes network retry text when present", () => {
+        expect(formatNodeLoadingText({ networkRetryText: "服务重连中 (2/5)...", queuePosition: 3 })).toBe("服务重连中 (2/5)...");
+    });
+
+    it("formats queue position when in queue", () => {
+        expect(formatNodeLoadingText({ queuePosition: 4 })).toBe("排队中 (第 4 位)");
+    });
+
+    it("keeps the caption free of percentages once progress takes over", () => {
+        expect(formatNodeLoadingText({ progressPct: 62, queuePosition: 4 })).toBe("排队中 (第 4 位)");
+    });
+
+    it("prefers reconnect text over progress", () => {
+        expect(formatNodeLoadingText({ networkRetryText: "服务重连中 (2/5)...", progressPct: 62 })).toBe("服务重连中 (2/5)...");
+    });
+});
+
+describe("formatProgressCaption", () => {
+    it("localizes long backend class names into short labels", () => {
+        expect(formatProgressCaption({ progressNodeClassType: "SamplerCustomAdvanced", progressNodeStep: 21, progressNodeSteps: 50 })).toBe("采样 21/50");
+    });
+
+    it("hides node classes it has no label for instead of leaking the raw name", () => {
+        expect(formatProgressCaption({ progressNodeClassType: "SomePrivateCustomNode", progressNodeStep: 1, progressNodeSteps: 2 })).toBeUndefined();
+    });
+
+    it("omits the step counter for stages that have no steps", () => {
+        expect(formatProgressCaption({ progressNodeClassType: "VAEDecode" })).toBe("解码");
+    });
+
+    it("returns nothing when no node has been reported yet", () => {
+        expect(formatProgressCaption({})).toBeUndefined();
+    });
+});
+
+describe("updateNodeGenerationProgress", () => {
+    it("keeps accepted text job IDs on their own candidate", () => {
+        const node = makeNode(CanvasNodeType.Text, {
+            status: "loading",
+            texts: [{ id: "first", content: "", status: "loading" }, { id: "second", content: "", status: "loading" }],
+        }, "batch");
+        const [updated] = updateNodeGenerationProgress([node], "batch", "submitted", { jobId: "accepted-text" }, "first");
+        expect(updated.metadata?.texts?.[0].jobId).toBe("accepted-text");
+        expect(updated.metadata?.texts?.[1].jobId).toBeUndefined();
+        expect(updated.metadata?.jobId).toBeUndefined();
+    });
+
+    it("updates target node progress status and transient fields", () => {
+        const node = makeNode(CanvasNodeType.Image, { status: "loading" }, "node-1");
+        const updated1 = updateNodeGenerationProgress([node], "node-1", "pending", { queuePosition: 2 });
+        expect(updated1[0].metadata?.queuePosition).toBe(2);
+
+        const updated2 = updateNodeGenerationProgress(updated1, "node-1", "network_retry", { message: "重连中 (1/5)..." });
+        expect(updated2[0].metadata?.networkRetryText).toBe("重连中 (1/5)...");
+
+        const updated3 = updateNodeGenerationProgress(updated2, "node-1", "running");
+        expect(updated3[0].metadata?.queuePosition).toBeUndefined();
+        expect(updated3[0].metadata?.networkRetryText).toBeUndefined();
+    });
+
+    it("writes progress onto the node while running and clears it on settlement", () => {
+        const node = makeNode(CanvasNodeType.Image, { status: "loading" }, "node-progress");
+        const running = updateNodeGenerationProgress([node], "node-progress", "running", { progressPct: 62, progressNodeClassType: "KSampler", progressNodeStep: 21, progressNodeSteps: 50 });
+        expect(running[0].metadata?.progressPct).toBe(62);
+        expect(running[0].metadata?.progressNodeClassType).toBe("KSampler");
+        expect(running[0].metadata?.progressNodeStep).toBe(21);
+        expect(running[0].metadata?.queuePosition).toBeUndefined();
+
+        const settled = updateNodeGenerationProgress(running, "node-progress", "pending", { queuePosition: 2 });
+        expect(settled[0].metadata?.progressPct).toBeUndefined();
+        expect(settled[0].metadata?.progressNodeClassType).toBeUndefined();
+    });
+
+    it("drops the percentage when a running update carries no number", () => {
+        const node = makeNode(CanvasNodeType.Image, { status: "loading", progressPct: 62, progressNodeClassType: "KSampler" }, "node-lost");
+        const [updated] = updateNodeGenerationProgress([node], "node-lost", "running");
+        expect(updated.metadata?.progressPct).toBeUndefined();
+        expect(updated.metadata?.progressNodeClassType).toBeUndefined();
+    });
+
+    it("updates target slot image within batch node", () => {
+        const node = makeNode(CanvasNodeType.Image, {
+            status: "loading",
+            images: [
+                { id: "img-1", status: "loading", content: "", storageKey: "", naturalWidth: 100, naturalHeight: 100, bytes: 0, mimeType: "image/png" },
+            ],
+        }, "node-batch");
+
+        const updated = updateNodeGenerationProgress([node], "node-batch", "network_retry", { message: "重连 (1/5)..." }, "img-1");
+        expect(updated[0].metadata?.images?.[0].networkRetryText).toBe("重连 (1/5)...");
+    });
+
+    it("syncs jobId across node metadata and images when imageId is not specified", () => {
+        const node = makeNode(CanvasNodeType.Image, {
+            status: "loading",
+            images: [
+                { id: "img-1", status: "loading", content: "", storageKey: "", naturalWidth: 100, naturalHeight: 100, bytes: 0, mimeType: "image/png" },
+            ],
+        }, "node-single");
+
+        const updated = updateNodeGenerationProgress([node], "node-single", "submitted", { jobId: "job-123" });
+        expect(updated[0].metadata?.jobId).toBe("job-123");
+        expect(updated[0].metadata?.images?.[0].jobId).toBe("job-123");
+    });
+});
+
+describe("resetInterruptedGeneration with jobId persistence", () => {
+    it("inherits root jobId to interrupted images if image jobId was missing", () => {
+        const node = makeNode(CanvasNodeType.Image, {
+            status: "loading",
+            jobId: "job-456",
+            images: [
+                { id: "img-1", status: "loading", content: "", storageKey: "", naturalWidth: 100, naturalHeight: 100, bytes: 0, mimeType: "image/png" },
+            ],
+        }, "node-interrupted");
+
+        const [reset] = resetInterruptedGeneration([node]);
+        expect(reset.metadata?.status).toBe("error");
+        expect(reset.metadata?.jobId).toBe("job-456");
+        expect(reset.metadata?.images?.[0].jobId).toBe("job-456");
+    });
+});
+
+
 

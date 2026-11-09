@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { isImeComposing, isPlainEnterKey } from "@/lib/keyboard-event";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import type { CanvasResourceReference, CategorizedCanvasResources } from "@/lib/canvas/canvas-resource-references";
+import { getMotionPreset, type CanvasMotionPreset } from "@/lib/canvas/canvas-motion-presets";
+import { CanvasResourceMentionMenu, type MentionMenuHandle } from "./canvas-resource-mention-menu";
 
 type Props = {
     value: string;
@@ -23,6 +25,10 @@ type Props = {
     placeholder?: string;
     allowClear?: boolean;
     onClear?: () => void;
+    categorizedResources?: CategorizedCanvasResources;
+    showMotionPresets?: boolean;
+    onConnectResource?: (sourceNodeId: string) => boolean | Promise<boolean>;
+    triggerMentionRef?: React.MutableRefObject<(() => void) | null>;
 };
 
 type MentionState = {
@@ -32,13 +38,29 @@ type MentionState = {
 
 type Token =
     | { type: "text"; value: string }
-    | { type: "reference"; nodeId: string };
+    | { type: "reference"; nodeId: string }
+    | { type: "motion"; motionId: string };
 
 // Prompt-panel contentEditable input: @ references embed thumbnail chips instead of plain label text.
 // Display labels stay localized, while the persisted value uses stable `@[node:<nodeId>]` tokens, so
 // serialization is independent of locale or label changes. Nodes that are missing or disconnected
 // keep their raw token as plain text instead of being dropped.
-export function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, containerClassName, style, placeholder, allowClear = true, onClear }: Props) {
+export function CanvasPromptChipInput({
+    value,
+    references,
+    onChange,
+    onSubmit,
+    className,
+    containerClassName,
+    style,
+    placeholder,
+    allowClear = true,
+    onClear,
+    categorizedResources,
+    showMotionPresets = true,
+    onConnectResource,
+    triggerMentionRef,
+}: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
@@ -47,6 +69,8 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     // so skip rebuilding to preserve the caret and IME. Rebuild external changes even while focused.
     const lastEmittedRef = useRef(value);
     const savedRangeRef = useRef<Range | null>(null);
+    const blurTimerRef = useRef<number | null>(null);
+    const menuRef = useRef<MentionMenuHandle | null>(null);
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -58,9 +82,27 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const candidates = useMemo(() => {
         if (!mention) return [];
         const query = mention.query.trim().toLowerCase();
+        if (categorizedResources) {
+            if (query) {
+                const allItems = [
+                    ...categorizedResources.images,
+                    ...categorizedResources.videos,
+                    ...categorizedResources.audios,
+                    ...categorizedResources.texts,
+                    ...categorizedResources.subjects,
+                ];
+                const seen = new Set<string>();
+                return allItems.filter((item) => {
+                    if (seen.has(item.nodeId)) return false;
+                    seen.add(item.nodeId);
+                    return `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query);
+                });
+            }
+            return categorizedResources.possible;
+        }
         if (!query) return activeReferences;
         return activeReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
-    }, [mention, activeReferences]);
+    }, [mention, categorizedResources, activeReferences]);
 
     // Rebuild the DOM from value when unfocused, or when a focused value is an external change rather than an emitted echo.
     useEffect(() => {
@@ -76,12 +118,45 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                 editor.append(document.createTextNode(token.value));
                 return;
             }
+            if (token.type === "motion") {
+                const motion = getMotionPreset(token.motionId);
+                editor.append(document.createTextNode(motion ? motion.prompt + " " : `@[motion:${token.motionId}]`));
+                return;
+            }
             const reference = referenceByNodeId.get(token.nodeId);
             if (reference) editor.append(createReferenceChip(reference, theme, setImagePreview));
             else editor.append(document.createTextNode(`@[node:${token.nodeId}]`));
         });
         lastEmittedRef.current = value;
     }, [tokens, referenceByNodeId, theme, value]);
+
+    // 绑定外部命令式唤起 @ 菜单的 ref
+    useEffect(() => {
+        if (!triggerMentionRef) return;
+        triggerMentionRef.current = () => {
+            if (blurTimerRef.current) {
+                window.clearTimeout(blurTimerRef.current);
+                blurTimerRef.current = null;
+            }
+            if (mention) {
+                closeMention();
+                return;
+            }
+            const editor = editorRef.current;
+            if (!editor) return;
+            editor.focus();
+            const selection = window.getSelection();
+            if (!selection?.rangeCount || !editor.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+                placeCaretAtEnd(editor);
+            }
+            const activeSel = window.getSelection();
+            if (activeSel?.rangeCount && editor.contains(activeSel.getRangeAt(0).commonAncestorContainer)) {
+                savedRangeRef.current = activeSel.getRangeAt(0).cloneRange();
+            }
+            setMention({ query: "", rect: caretRect() });
+            setActiveIndex(0);
+        };
+    }, [triggerMentionRef, mention]);
 
     const emit = (next: string) => {
         lastEmittedRef.current = next;
@@ -98,7 +173,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const syncMention = () => {
         const text = textBeforeCaret();
         const match = /@([^\s@]*)$/.exec(text);
-        if (!match || !activeReferences.length) {
+        if (!match || (!categorizedResources && !activeReferences.length)) {
             closeMention();
             return;
         }
@@ -111,14 +186,21 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     };
 
     const closeMention = () => {
+        if (blurTimerRef.current) {
+            window.clearTimeout(blurTimerRef.current);
+            blurTimerRef.current = null;
+        }
         setMention(null);
         setActiveIndex(0);
         savedRangeRef.current = null;
     };
 
-    const insertReference = (reference: CanvasResourceReference) => {
+    const prepareActiveRange = () => {
         const editor = editorRef.current;
-        if (!editor) return;
+        if (!editor) return null;
+
+        editor.focus();
+
         const selection = window.getSelection();
         let range: Range | null = null;
         if (selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)) {
@@ -130,28 +212,75 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
         }
 
         removeActiveMention(range);
-        const chip = createReferenceChip(reference, theme, setImagePreview);
-        const space = document.createTextNode(" ");
-        const activeRange = selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+
+        return selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)
             ? selection.getRangeAt(0)
             : range && editor.contains(range.commonAncestorContainer)
             ? range
             : null;
+    };
+
+    const finishInsertion = (activeRange: Range | null) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        closeMention();
+        emit(serializeEditor(editor));
+        editor.focus();
+        const activeSel = window.getSelection();
+        if (activeSel && activeRange) {
+            activeSel.removeAllRanges();
+            activeSel.addRange(activeRange);
+        }
+        const marker = activeRange?.startContainer instanceof Element ? activeRange.startContainer : activeRange?.startContainer.parentElement;
+        marker?.scrollIntoView?.({ block: "nearest" });
+    };
+
+    const insertReference = (reference: CanvasResourceReference) => {
+        if (!reference.connected && onConnectResource) {
+            const success = onConnectResource(reference.nodeId);
+            if (success === false) {
+                closeMention();
+                return;
+            }
+        }
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        const activeRange = prepareActiveRange();
+        const chip = createReferenceChip(reference, theme, setImagePreview);
+        const space = document.createTextNode(" ");
 
         if (activeRange) {
             activeRange.insertNode(space);
             activeRange.insertNode(chip);
             activeRange.setStartAfter(space);
             activeRange.collapse(true);
-            selection?.removeAllRanges();
-            selection?.addRange(activeRange);
         } else {
             editor.append(chip, space);
             placeCaretAtEnd(editor);
         }
-        closeMention();
-        emit(serializeEditor(editor));
-        editor.focus();
+
+        finishInsertion(activeRange);
+    };
+
+    const insertMotionPreset = (motion: CanvasMotionPreset) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        const activeRange = prepareActiveRange();
+        const textNode = document.createTextNode(motion.prompt + " ");
+
+        if (activeRange) {
+            activeRange.insertNode(textNode);
+            activeRange.setStartAfter(textNode);
+            activeRange.collapse(true);
+        } else {
+            editor.append(textNode);
+            placeCaretAtEnd(editor);
+        }
+
+        finishInsertion(activeRange);
     };
 
     const handleClear = () => {
@@ -195,7 +324,11 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                 onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
                     event.stopPropagation();
                     if (isImeComposing(event)) return;
-                    if (mention && candidates.length) {
+                    if (mention && categorizedResources && menuRef.current) {
+                        if (menuRef.current.handleKeyDown(event)) {
+                            return;
+                        }
+                    } else if (mention && candidates.length) {
                         if (event.key === "ArrowDown") {
                             event.preventDefault();
                             setActiveIndex((index) => (index + 1) % candidates.length);
@@ -229,11 +362,18 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                     }
                     requestAnimationFrame(syncMention);
                 }}
+                onFocus={() => {
+                    if (blurTimerRef.current) {
+                        window.clearTimeout(blurTimerRef.current);
+                        blurTimerRef.current = null;
+                    }
+                }}
                 onBlur={(event) => {
                     if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest("[data-canvas-resource-mention-menu]")) {
                         return;
                     }
-                    window.setTimeout(closeMention, 120);
+                    if (blurTimerRef.current) window.clearTimeout(blurTimerRef.current);
+                    blurTimerRef.current = window.setTimeout(closeMention, 150);
                 }}
             />
             {allowClear && Boolean(value.trim()) ? (
@@ -260,7 +400,19 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                     </button>
                 </Popconfirm>
             ) : null}
-            {mention && candidates.length ? (
+            {mention && categorizedResources ? (
+                <CanvasResourceMentionMenu
+                    ref={menuRef}
+                    rect={mention.rect}
+                    query={mention.query}
+                    categorized={categorizedResources}
+                    theme={theme}
+                    showMotionPresets={showMotionPresets}
+                    onSelect={insertReference}
+                    onSelectMotion={insertMotionPreset}
+                    onClose={closeMention}
+                />
+            ) : mention && candidates.length ? (
                 <MentionMenu rect={mention.rect} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} />
             ) : null}
             {imagePreview ? <Image src={imagePreview} alt={i18n.t("canvas.composer.imagePreview")} style={{ display: "none" }} preview={{ visible: true, src: imagePreview, onVisibleChange: (visible) => !visible && setImagePreview(null) }} /> : null}
@@ -388,7 +540,9 @@ function serializeNodes(nodes: NodeListOf<ChildNode>) {
         if (node.nodeType === Node.TEXT_NODE) result += node.textContent || "";
         if (!(node instanceof HTMLElement)) return;
         const refNodeId = node.dataset.refNodeId;
+        const motionId = node.dataset.motionId;
         if (refNodeId) result += `@[node:${refNodeId}]`;
+        else if (motionId) result += `@[motion:${motionId}]`;
         else if (node.tagName === "BR") result += "\n";
         else result += serializeNodes(node.childNodes);
     });
@@ -448,7 +602,7 @@ function adjacentReferenceNode(range: Range, key: string) {
 function findReferenceSibling(node: Node, previous: boolean, includeSelf = false): HTMLElement | null {
     let current: Node | null = includeSelf ? node : previous ? node.previousSibling : node.nextSibling;
     while (current && current.nodeType === Node.TEXT_NODE && !(current.textContent || "").trim()) current = previous ? current.previousSibling : current.nextSibling;
-    return current instanceof HTMLElement && current.dataset.refNodeId ? current : null;
+    return current instanceof HTMLElement && (Boolean(current.dataset.refNodeId) || Boolean(current.dataset.motionId)) ? current : null;
 }
 
 function textBeforeCaret() {
@@ -487,14 +641,18 @@ function placeCaretAtEnd(element: HTMLElement) {
     selection?.addRange(range);
 }
 
-// Split value into text fragments and stable `@[node:<nodeId>]` reference tokens.
+// Split value into text fragments and stable `@[node:<nodeId>]` or `@[motion:<motionId>]` reference tokens.
 function parseTokens(value: string): Token[] {
     const tokens: Token[] = [];
     let lastIndex = 0;
-    for (const match of value.matchAll(/@\[node:([^\]]+)\]/g)) {
+    for (const match of value.matchAll(/@\[(node|motion):([^\]]+)\]/g)) {
         if (match.index === undefined) continue;
         if (match.index > lastIndex) tokens.push({ type: "text", value: value.slice(lastIndex, match.index) });
-        tokens.push({ type: "reference", nodeId: match[1] });
+        if (match[1] === "motion") {
+            tokens.push({ type: "motion", motionId: match[2] });
+        } else {
+            tokens.push({ type: "reference", nodeId: match[2] });
+        }
         lastIndex = match.index + match[0].length;
     }
     if (lastIndex < value.length) tokens.push({ type: "text", value: value.slice(lastIndex) });

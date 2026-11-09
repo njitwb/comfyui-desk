@@ -5,10 +5,11 @@ import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
 import { ChannelWorkflowPicker } from "@/components/channel-workflow-picker";
-import { decodeChannelModel, defaultConfig, encodeChannelModel, findWorkflow, getDefaultWorkflow, resolveModelChannel, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { decodeChannelModel, defaultConfig, encodeChannelModel, findWorkflow, resolveModelChannel, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { normalizeVideoSizeValue } from "@/components/video-settings-panel";
+import { getModelProfile, resolveVideoModelIdForMode, resolveVideoModelIdFromWorkflowId } from "@/services/api/models";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasAudioSettingsPopover } from "./canvas-audio-settings-popover";
@@ -117,13 +118,16 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                             ? "audio"
                             : "text"
                     }
-                    preferredCategory={mode === "video" ? (findWorkflow(globalConfig, node.metadata?.channelId, node.metadata?.workflowId)?.category || (config.videoMode === "frame" ? "frameVideo" : "omniVideo")) : undefined}
+                    preferredCategory={mode === "video" ? (findWorkflow(globalConfig, node.metadata?.channelId, node.metadata?.workflowId)?.category || (node.metadata?.videoMode === "frame" || config.videoMode === "frame" ? "frameVideo" : "omniVideo")) : undefined}
                     channelId={node.metadata?.channelId}
                     workflowId={node.metadata?.workflowId}
                     onChange={(channelId, workflowId, workflow) => {
                         const patch: Partial<CanvasNodeMetadata> = { channelId, workflowId };
                         if (mode === "video") {
-                            patch.videoMode = workflow?.category === "frameVideo" ? "frame" : workflow?.category === "omniVideo" ? "omni" : config.videoMode;
+                            const nextVideoMode = workflow?.category === "frameVideo" ? "frame" : workflow?.category === "omniVideo" ? "omni" : (node.metadata?.videoMode || config.videoMode);
+                            patch.videoMode = nextVideoMode;
+                            patch.modelId = resolveVideoModelIdFromWorkflowId(workflowId)
+                                ?? (nextVideoMode === "frame" ? "frame-video-minimax-h3-fp8-4step-pdmd" : "omni-video-minimax-h3-fp8-4step-pdmd");
                         }
                         onConfigChange(node.id, patch);
                     }}
@@ -131,10 +135,17 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                 />
                 {mode === "video" ? (
                     <CanvasVideoSettingsPopover
+                        modelId={node.metadata?.modelId || (node.metadata?.videoMode === "frame" || config.videoMode === "frame" ? "frame-video-minimax-h3-fp8-4step-pdmd" : "omni-video-minimax-h3-fp8-4step-pdmd")}
+                        size={node.metadata?.size || config.size}
+                        duration={node.metadata?.seconds || config.videoSeconds}
+                        videoMode={(node.metadata?.videoMode as "omni" | "frame") || (config.videoMode as "omni" | "frame")}
+                        onParamChange={(patch) => {
+                            onConfigChange(node.id, patch);
+                        }}
                         config={config}
                         placement="topRight"
                         buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2"
-                        onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value, config))}
+                        onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value, config, node.metadata?.modelId))}
                     />
                 ) : mode === "image" ? (
                     <CanvasImageSettingsPopover config={config} placement="topRight" autoAdjustOverflow={false} buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })} />
@@ -146,7 +157,17 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                         onConfigChange={(key, value) => onConfigChange(node.id, { seconds: value, audioSeconds: value })}
                     />
                 ) : (
-                    <CanvasTextSettingsPopover config={config} count={node.metadata?.textCount || 1} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(_, value) => onConfigChange(node.id, { reasoningEffort: value })} onCountChange={(textCount) => onConfigChange(node.id, { textCount })} />
+                    <CanvasTextSettingsPopover
+                        modelId={node.metadata?.modelId}
+                        maxLength={node.metadata?.maxLength}
+                        thinking={node.metadata?.thinking}
+                        onParamChange={(patch) => onConfigChange(node.id, patch)}
+                        config={config}
+                        count={node.metadata?.textCount || 1}
+                        placement="topRight"
+                        buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2"
+                        onCountChange={(textCount) => onConfigChange(node.id, { textCount })}
+                    />
                 )}
             </div>
 
@@ -226,26 +247,31 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
     };
 }
 
-function videoConfigPatch(key: keyof AiConfig, value: string, config?: AiConfig) {
+function videoConfigPatch(key: keyof AiConfig, value: string, config?: AiConfig, currentModelId?: string) {
     if (key === "videoSeconds") return { seconds: value };
     if (key === "videoGenerateAudio") return { generateAudio: value };
     if (key === "videoWatermark") return { watermark: value };
     if (key === "videoMode") {
-        const patch: Record<string, unknown> = { videoMode: value };
+        const patch: Record<string, unknown> = {
+            videoMode: value,
+            modelId: resolveVideoModelIdForMode(
+                currentModelId || config?.videoModel || config?.model,
+                value === "frame" ? "frame" : "omni",
+            ),
+        };
         if (config) {
             const channel = resolveModelChannel(config, config.model || config.videoModel);
             if (value === "frame") {
                 const frameModel = channel.models.find((m) => m.name === "ComfyUI Frame Video" || m.name.toLowerCase().includes("frame") || m.name.includes("首尾帧"));
                 if (frameModel) patch.model = encodeChannelModel(channel.id, frameModel.name);
-                const defaultFrameWf = getDefaultWorkflow(channel, "frameVideo");
-                if (defaultFrameWf) patch.workflowId = defaultFrameWf.id;
             } else if (value === "omni") {
                 const omniModel = channel.models.find((m) => m.name === "ComfyUI Video" || (!m.name.toLowerCase().includes("frame") && !m.name.includes("首尾帧") && m.capability === "video"));
                 if (omniModel) patch.model = encodeChannelModel(channel.id, omniModel.name);
-                const defaultOmniWf = getDefaultWorkflow(channel, "omniVideo");
-                if (defaultOmniWf) patch.workflowId = defaultOmniWf.id;
             }
         }
+        // 清空节点级工作流绑定：执行时 workflowId 优先于 modelId 派生，
+        // 若保留旧的类别默认工作流，切换后的模型（如 INT8 量化版）会被静默跳过。
+        patch.workflowId = undefined;
         return patch;
     }
     return { [key]: value };
