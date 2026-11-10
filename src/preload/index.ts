@@ -93,6 +93,17 @@ const api: import('../shared/api').LauncherApi = {
   queueWorkflow: (p: string) => ipcRenderer.invoke(IPC.workflowsQueue, p),
   deleteWorkflow: (p: string) => ipcRenderer.invoke(IPC.workflowsDelete, p),
 
+  // packs
+  packPickZip: () => ipcRenderer.invoke(IPC.packsPick),
+  packInspect: (ref: string) => ipcRenderer.invoke(IPC.packsInspect, ref),
+  packApply: (req: import('../shared/pack').PackApplyRequest) => ipcRenderer.invoke(IPC.packsApply, req),
+  packCancel: () => ipcRenderer.invoke(IPC.packsCancel),
+  packExportPreview: (source: 'builtin' | 'current', builtinId?: string) =>
+    ipcRenderer.invoke(IPC.packsExportPreview, source, builtinId),
+  packExport: (req: import('../shared/pack').PackExportRequest) => ipcRenderer.invoke(IPC.packsExport, req),
+  packInstalled: () => ipcRenderer.invoke(IPC.packsInstalled),
+  onPackProgress: (cb: (e: import('../shared/pack').PackProgressEvent) => void) => on(IPC.evPackProgress, cb),
+
   // terminal
   termOpen: (cols: number, rows: number) => ipcRenderer.invoke(IPC.termOpen, cols, rows),
   termWrite: (id: number, data: string) => ipcRenderer.invoke(IPC.termWrite, id, data),

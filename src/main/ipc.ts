@@ -20,6 +20,9 @@ import {
 } from './downloads'
 import { listNodes, installMany, createToken, cancelToken, updateNode, updateAllNodes, removeNode } from './nodes'
 import { scanWorkflows, workflowDir, importWorkflow, queueWorkflow, deleteWorkflow } from './workflows'
+import { inspectPack, applyPack, cancelPack, listInstalledPacks } from './pack'
+import { previewExport, exportPack } from './pack-export'
+import type { PackApplyRequest, PackExportRequest } from '../shared/pack'
 import { terminal } from './terminal'
 import { runDiagnostics, repairEnv } from './diagnostics'
 import { checkAppUpdate, installUpdate } from './updater'
@@ -350,6 +353,27 @@ export function registerIpc(): void {
     deleteWorkflow(p)
     comfy.pushLog('sys', t('m.ipc.log.workflowDeleted', { path: p }))
   })
+
+  // ---- packs（整合包）----
+  ipcMain.handle(IPC.packsPick, async () => {
+    const r = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'zip', extensions: ['zip'] }]
+    })
+    return r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+  })
+  ipcMain.handle(IPC.packsInspect, (_e, ref: string) => inspectPack(ref))
+  ipcMain.handle(IPC.packsApply, (_e, req: PackApplyRequest) =>
+    applyPack(req, e => send(IPC.evPackProgress, e))
+  )
+  ipcMain.handle(IPC.packsCancel, () => cancelPack())
+  ipcMain.handle(IPC.packsExportPreview, (_e, source: 'builtin' | 'current', builtinId?: string) =>
+    previewExport(source, builtinId)
+  )
+  ipcMain.handle(IPC.packsExport, (_e, req: PackExportRequest) =>
+    exportPack(req, e => send(IPC.evPackProgress, e))
+  )
+  ipcMain.handle(IPC.packsInstalled, () => listInstalledPacks())
 
   // ---- terminal ----
   ipcMain.handle(IPC.termOpen, (_e, cols: number, rows: number) => terminal.open(cols, rows))

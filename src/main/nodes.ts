@@ -58,8 +58,111 @@ export async function listNodes(): Promise<NodeItem[]> {
   return items.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** 安装节点依赖：requirements.txt → install.py */
-async function installDeps(dir: string, on: NodeEventFn, token?: CancelToken): Promise<void> {
+export function nodeDirExists(key: string): boolean {
+  return fs.existsSync(path.join(nodesRoot(), key))
+}
+
+/**
+ * 按整合包清单安装节点：git clone（可指定分支/commit）后执行依赖安装。
+ * 与 installNode 的区别：不因同名目录存在而抛错（调用方负责存在性判断），
+ * 并支持 checkout 固定 commit，保证整合包可复现。
+ */
+export async function installNodeAtRef(
+  key: string,
+  source: { url: string; ref?: string; commit?: string },
+  on: NodeEventFn,
+  token?: CancelToken
+): Promise<string> {
+  if (!/^https?:\/\//.test(source.url) && !/^git@/.test(source.url)) throw new Error(t('m.nodes.invalidUrl'))
+  if (!key.trim() || /[/\\]/.test(key) || key === '.' || key === '..') throw new Error(t('m.nodes.invalidUrl'))
+  const root = nodesRoot()
+  fs.mkdirSync(root, { recursive: true })
+  const dest = path.join(root, key)
+  if (fs.existsSync(dest)) return key
+  if (token?.cancelled) throw new Error(t('m.nodes.cancelled'))
+  const finalUrl = transformGitUrl(source.url)
+  on(t('m.nodes.cloning', { url: finalUrl }))
+  const args = ['clone', '--depth', '1']
+  if (source.ref) args.push('--branch', source.ref)
+  args.push(finalUrl, dest)
+  const r = await run(gitExe(), args, {
+    onData: on,
+    timeoutMs: 30 * 60 * 1000,
+    onSpawn: k => token && linkKill(token, k)
+  })
+  if (r.code !== 0) {
+    fs.rmSync(dest, { recursive: true, force: true })
+    throw new Error(r.aborted ? t('m.nodes.cancelled') : t('m.nodes.cloneFailed', { msg: (r.err || r.out).slice(-300) }))
+  }
+  if (source.commit) {
+    on(t('m.pack.logInstallNode', { name: `${key} @ ${source.commit.slice(0, 8)}` }))
+    let c = await run(gitExe(), ['fetch', '--depth', '1', 'origin', source.commit], {
+      cwd: dest,
+      timeoutMs: 10 * 60 * 1000,
+      onSpawn: k => token && linkKill(token, k)
+    })
+    if (c.code === 0) c = await run(gitExe(), ['checkout', source.commit], { cwd: dest, timeoutMs: 60000 })
+    if (c.code !== 0) {
+      // 浅克隆拿不到指定 commit 时退化为完整 fetch
+      const full = await run(gitExe(), ['fetch', '--unshallow', 'origin'], {
+        cwd: dest,
+        timeoutMs: 20 * 60 * 1000,
+        onSpawn: k => token && linkKill(token, k)
+      })
+      if (full.code === 0) c = await run(gitExe(), ['checkout', source.commit], { cwd: dest, timeoutMs: 60000 })
+    }
+    if (c.code !== 0) {
+      fs.rmSync(dest, { recursive: true, force: true })
+      throw new Error(t('m.nodes.cloneFailed', { msg: `checkout ${source.commit} failed` }))
+    }
+  }
+  if (token?.cancelled) {
+    fs.rmSync(dest, { recursive: true, force: true })
+    throw new Error(t('m.nodes.cancelled'))
+  }
+  await installDeps(dest, on, token)
+  on(t('m.nodes.installDone', { name: key }))
+  return key
+}
+
+/** 从整合包 payload 拷贝一个完整节点目录到 custom_nodes，然后执行依赖安装 */
+export async function installNodeFromBundle(
+  key: string,
+  srcDir: string,
+  on: NodeEventFn,
+  token?: CancelToken
+): Promise<string> {
+  if (!key.trim() || /[/\\]/.test(key) || key === '.' || key === '..') throw new Error(t('m.nodes.invalidUrl'))
+  if (!fs.existsSync(srcDir)) throw new Error(t('m.pack.errCopy', { path: srcDir }))
+  const root = nodesRoot()
+  fs.mkdirSync(root, { recursive: true })
+  const dest = path.join(root, key)
+  if (fs.existsSync(dest)) return key
+  copyDirSafe(srcDir, dest)
+  if (token?.cancelled) {
+    fs.rmSync(dest, { recursive: true, force: true })
+    throw new Error(t('m.nodes.cancelled'))
+  }
+  await installDeps(dest, on, token)
+  on(t('m.nodes.installDone', { name: key }))
+  return key
+}
+
+/** 递归复制目录：跳过符号链接、__pycache__ 与 .git，避免把缓存/仓库带进运行环境 */
+function copyDirSafe(src: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true })
+  for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+    if (e.isSymbolicLink()) continue
+    if (e.name === '__pycache__' || e.name === '.git') continue
+    const s = path.join(src, e.name)
+    const d = path.join(dest, e.name)
+    if (e.isDirectory()) copyDirSafe(s, d)
+    else if (e.isFile()) fs.copyFileSync(s, d)
+  }
+}
+
+/** 安装节点依赖：requirements.txt → install.py（整合包安装与节点安装共用） */
+export async function installDeps(dir: string, on: NodeEventFn, token?: CancelToken): Promise<void> {
   const mirror = PIP_MIRRORS[loadSettings().pipMirror]
   const req = path.join(dir, 'requirements.txt')
   if (fs.existsSync(req)) {

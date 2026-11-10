@@ -18,6 +18,7 @@ import terminal from './locales/terminal'
 import models from './locales/models'
 import nodes from './locales/nodes'
 import workflows from './locales/workflows'
+import packs from './locales/packs'
 import tools from './locales/tools'
 import settings from './locales/settings'
 import about from './locales/about'
@@ -31,6 +32,7 @@ import mainTerminal from './locales/main-terminal'
 import mainMisc from './locales/main-misc'
 import mainUpdater from './locales/main-updater'
 import mainAgent from './locales/main-agent'
+import mainPacks from './locales/main-packs'
 
 export const MESSAGES = {
   ...common,
@@ -47,6 +49,7 @@ export const MESSAGES = {
   ...models,
   ...nodes,
   ...workflows,
+  ...packs,
   ...tools,
   ...settings,
   ...about,
@@ -59,7 +62,8 @@ export const MESSAGES = {
   ...mainTerminal,
   ...mainMisc,
   ...mainUpdater,
-  ...mainAgent
+  ...mainAgent,
+  ...mainPacks
 }
 
 export type MessageKey = keyof typeof MESSAGES

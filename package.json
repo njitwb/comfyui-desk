@@ -10,6 +10,7 @@
     "dev": "npm run build:canvas && npm run build:agent && npm run build:dsh && electron-vite dev",
     "build": "electron-vite build",
     "build:canvas": "node scripts/build-canvas.mjs",
+    "build:pack": "node scripts/build-pack.mjs",
     "build:agent": "node scripts/build-agent.mjs",
     "build:dsh": "node scripts/build-dsh.mjs",
     "start": "electron-vite preview",

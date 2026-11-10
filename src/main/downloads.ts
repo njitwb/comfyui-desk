@@ -457,15 +457,29 @@ export async function startDownload(opts: {
   category?: string
   filename?: string
   useHfMirror?: boolean
+  destRelPath?: string
 }): Promise<DownloadTask> {
   // HF 源开关：调用方未显式指定时跟随「设置」里的 hfMirror
   const useHfMirror = opts.useHfMirror ?? loadSettings().hfMirror
   const url = normalizeUrl(opts.url, useHfMirror)
   const rawName = (opts.filename || '').trim() || guessName(url)
   const filename = path.basename(rawName || `download-${Date.now()}.bin`) // 防路径穿越
+  const rel = (opts.destRelPath || '').trim().replace(/\\/g, '/')
   const cats = modelCategories()
-  const category = cats.includes(opts.category || '') ? (opts.category as string) : inferCategory(filename, url)
-  const dir = path.join(paths().models, category)
+  let category: string
+  let dir: string
+  if (rel) {
+    // 嵌套目标路径（如 ultralytics/segm）：解析到 models 根下并做前缀校验
+    const root = path.resolve(paths().models)
+    const full = path.resolve(root, rel)
+    if (full !== root && !full.startsWith(root + path.sep)) throw new Error(tr('m.models.invalidPath'))
+    if (rel.split('/').some(s => s === '..' || s === '.' || s === '')) throw new Error(tr('m.models.invalidPath'))
+    dir = full
+    category = rel
+  } else {
+    category = cats.includes(opts.category || '') ? (opts.category as string) : inferCategory(filename, url)
+    dir = path.join(paths().models, category)
+  }
   fs.mkdirSync(dir, { recursive: true })
   const dest = path.join(dir, filename)
   const st: TaskState = {

@@ -16,12 +16,13 @@ import Terminal from './views/Terminal.vue'
 import Models from './views/Models.vue'
 import Nodes from './views/Nodes.vue'
 import Workflows from './views/Workflows.vue'
+import Packs from './views/Packs.vue'
 import Tools from './views/Tools.vue'
 import Settings from './views/Settings.vue'
 import About from './views/About.vue'
 import appIcon from './assets/brand/app-icon.png'
 
-type PageKey = 'dashboard' | 'workbench' | 'canvas' | 'harness' | 'install' | 'logs' | 'terminal' | 'models' | 'nodes' | 'workflows' | 'tools' | 'settings' | 'about'
+type PageKey = 'dashboard' | 'workbench' | 'canvas' | 'harness' | 'install' | 'logs' | 'terminal' | 'models' | 'nodes' | 'workflows' | 'packs' | 'tools' | 'settings' | 'about'
 const page = ref<PageKey>('dashboard')
 const collapsed = ref(false)
 
@@ -36,13 +37,19 @@ const navs: { key: PageKey; label: MessageKey; icon: string }[] = [
   { key: 'models', label: 'nav.models', icon: '▦' },
   { key: 'nodes', label: 'nav.nodes', icon: '⌘' },
   { key: 'workflows', label: 'nav.workflows', icon: '◇' },
+  { key: 'packs', label: 'nav.packs', icon: '▤' },
   { key: 'tools', label: 'nav.tools', icon: '⚒' },
   { key: 'settings', label: 'nav.settings', icon: '⚙' },
   { key: 'about', label: 'nav.about', icon: 'ⓘ' }
 ]
 
-const pages: Record<PageKey, unknown> = { dashboard: Dashboard, workbench: Workbench, canvas: Canvas, harness: Harness, install: Install, logs: Logs, terminal: Terminal, models: Models, nodes: Nodes, workflows: Workflows, tools: Tools, settings: Settings, about: About }
+const pages: Record<PageKey, unknown> = { dashboard: Dashboard, workbench: Workbench, canvas: Canvas, harness: Harness, install: Install, logs: Logs, terminal: Terminal, models: Models, nodes: Nodes, workflows: Workflows, packs: Packs, tools: Tools, settings: Settings, about: About }
 const current = computed(() => pages[page.value])
+
+/** 子页面请求跳转（事件参数来自各视图的字符串） */
+function onNav(k: string): void {
+  page.value = k as PageKey
+}
 
 const statusKey: Record<string, MessageKey> = { stopped: 'app.status.stopped', starting: 'app.status.starting', running: 'app.status.running', error: 'app.status.error' }
 
@@ -145,12 +152,12 @@ api.onDownloadTaken(({ filename }) => {
     <button v-if="collapsed" class="btn side-expand" :title="t('nav.expand')" @click="collapsed = false">☰</button>
     <main class="main">
       <!-- 工作台 / 无限画布 / Harness 常驻挂载（v-show）：webview 脱离 DOM 后会重载，不能走 KeepAlive 挂起 -->
-      <Workbench v-show="page === 'workbench'" @nav="(k: PageKey) => (page = k)" />
-      <Canvas v-show="page === 'canvas'" @nav="(k: PageKey) => (page = k)" />
+      <Workbench v-show="page === 'workbench'" @nav="onNav" />
+      <Canvas v-show="page === 'canvas'" @nav="onNav" />
       <Harness v-show="page === 'harness'" />
-      <!-- 状态型页面缓存实例（开关切换不丢终端输出/安装进度）；:key 必加，否则 KeepAlive 会缓存错配 -->
-      <KeepAlive :include="['Terminal', 'Logs', 'Install', 'Tools', 'Nodes']">
-        <component :is="current" :key="page" v-if="page !== 'workbench' && page !== 'canvas' && page !== 'harness'" @nav="(k: PageKey) => (page = k)" />
+      <!-- 状态型页面缓存实例（开关切换不丢终端输出/安装进度/整合包进度）；:key 必加，否则 KeepAlive 会缓存错配 -->
+      <KeepAlive :include="['Terminal', 'Logs', 'Install', 'Tools', 'Nodes', 'Packs']">
+        <component :is="current" :key="page" v-if="page !== 'workbench' && page !== 'canvas' && page !== 'harness'" @nav="onNav" />
       </KeepAlive>
     </main>
     <div v-if="store.progress" class="toast mono">{{ store.progress.stage }} · {{ store.progress.message }}</div>

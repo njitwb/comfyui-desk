@@ -5,6 +5,9 @@ dist-types
 resources/*
 # 内嵌画布 webview 的预加载桥：手写源码 + 运行时按真实路径加载，必须入库
 !resources/canvas-preload.cjs
+# 内置整合包定义（体积约 1MB，需随仓库分发）
+!resources/packs/
+!resources/packs/**
 release
 .trae
 

@@ -1,0 +1,688 @@
+{
+  "nodePacks": {
+    "ComfyLiterals": {
+      "url": "https://github.com/M1kep/ComfyLiterals.git",
+      "commit": "bdddb08ca82d90d75d97b1d437a652e0284a32ac",
+      "required": true
+    },
+    "ComfyUI-KJNodes": {
+      "url": "https://github.com/kijai/ComfyUI-KJNodes.git",
+      "required": true
+    },
+    "ComfyUI-UniversalToolkit": {
+      "url": "https://github.com/whmc76/ComfyUI-UniversalToolkit.git",
+      "required": true
+    },
+    "ComfyUI_LayerStyle": {
+      "url": "https://github.com/chflame163/ComfyUI_LayerStyle.git",
+      "required": true
+    },
+    "Comfyui-kktools": {
+      "url": "https://github.com/zhiwendesign/Comfyui-kktools.git",
+      "commit": "f8c9d81267176a64e94cd5b092bb8acaa4315bad",
+      "required": true
+    },
+    "ComfyUI-VideoHelperSuite": {
+      "url": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+      "required": true
+    },
+    "ComfyUI-H3-FaceRefine": {
+      "url": "https://github.com/Carasibana/ComfyUI-H3-FaceRefine.git",
+      "required": true
+    },
+    "ComfyUI-Impact-Pack": {
+      "url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack",
+      "optional": true
+    },
+    "ComfyUI-GGUF": {
+      "url": "https://github.com/city96/ComfyUI-GGUF.git",
+      "optional": true
+    },
+    "ComfyUI-ReShot": {
+      "url": "https://github.com/maosika-ai/ComfyUI-ReShot.git",
+      "commit": "3575e39e463cc41588e3f1ef3daa3e15c768d78e",
+      "required": true
+    }
+  },
+  "bundledNodes": {
+    "ComfyUI-H3-NativeAudioLock": {
+      "localDir": "ComfyUI-H3-NativeAudioLock",
+      "required": true
+    }
+  },
+  "unknownNodes": {},
+  "familyRules": [
+    {
+      "match": "^flux2|^Flux2Turbo",
+      "repo": "Comfy-Org/Flux-2-Dev",
+      "prefix": "split_files"
+    },
+    {
+      "match": "^z_image_turbo|^ae\\.safetensors$|^qwen_3_4b",
+      "repo": "Comfy-Org/z_image_turbo",
+      "prefix": "split_files"
+    },
+    {
+      "match": "^minimax_music3",
+      "repo": "Comfy-Org/MiniMax-Music-3",
+      "prefix": ""
+    },
+    {
+      "match": "^minimax_h3",
+      "repo": "Comfy-Org/MiniMax-H3",
+      "prefix": ""
+    },
+    {
+      "match": "^qwen3vl_32b_minimax_h3",
+      "repo": "Comfy-Org/MiniMax-H3",
+      "prefix": ""
+    },
+    {
+      "match": "^qwen3\\.5",
+      "repo": "Comfy-Org/Qwen3.5",
+      "prefix": ""
+    },
+    {
+      "match": "^qwen_image_2\\.1",
+      "repo": "Comfy-Org/Qwen-Image-2.1",
+      "prefix": ""
+    },
+    {
+      "match": "^qwen_image|^qwen_2\\.5",
+      "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+      "prefix": "split_files"
+    },
+    {
+      "match": "Qwen-Image-Lightning",
+      "repo": "lightx2v/Qwen-Image-Lightning",
+      "prefix": ""
+    }
+  ],
+  "models": {
+    "Flux2TurboComfyv2.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Flux-2-Dev",
+          "file": "split_files/loras/Flux2TurboComfyv2.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "Qwen-Image-InstantX-ControlNet-Inpainting.safetensors": {
+      "category": "controlnet",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen-Image-InstantX-ControlNets",
+          "file": "split_files/controlnet/Qwen-Image-InstantX-ControlNet-Inpainting.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "Qwen-Image-Lightning-4steps-V1.0.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "lightx2v/Qwen-Image-Lightning",
+          "file": "Qwen-Image-Lightning-4steps-V1.0.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "ae.safetensors": {
+      "category": "vae",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/z_image_turbo",
+          "file": "split_files/vae/ae.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "face_yolov8m.pt": {
+      "category": "ultralytics/bbox",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Bingsu/adetailer",
+          "file": "face_yolov8m.pt",
+          "revision": "main"
+        },
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "face_yolov8m"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "flux2-vae.safetensors": {
+      "category": "vae",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Flux-2-Dev",
+          "file": "split_files/vae/flux2-vae.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "flux2_dev_fp8mixed.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Flux-2-Dev",
+          "file": "split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_h3_audio_vae_fp32.safetensors": {
+      "category": "vae",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "vae/minimax_h3_audio_vae_fp32.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_h3_fl2va_bf16.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_h3_fl2va_bf16"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_h3_fl2va_int8_convrot.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_h3_fl2va_pruned_fp8_scaled.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_h3_fl2va_pruned_fp8_scaled"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_h3_fl2va_pruned_int8_convrot.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Kijai/MiniMax-H3-experimental",
+          "file": "loras/minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Kijai/MiniMax-H3_comfy",
+          "file": "loras/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_h3_ref2va_bf16.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_h3_ref2va_bf16"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_h3_ref2va_int8_convrot.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_h3_ref2va_pruned_fp8_scaled.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_h3_ref2va_pruned_fp8_scaled"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_h3_ref2va_pruned_int8_convrot.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_h3_video_vae_fp16.safetensors": {
+      "category": "vae",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "vae/minimax_h3_video_vae_fp16.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_music3_dav.safetensors": {
+      "category": "vae",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-Music-3",
+          "file": "vae/minimax_music3_dav.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_music3_dit_fp16.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-Music-3",
+          "file": "diffusion_models/minimax_music3_dit_fp16.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "minimax_music3_dit_fp32.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_music3_dit_fp32"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_music3_text_encoder_bf16.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_music3_text_encoder_bf16"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "minimax_music3_text_encoder_pruned_int8_convrot.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-Music-3",
+          "file": "text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "mistral_3_small_flux2_fp8.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Flux-2-Dev",
+          "file": "split_files/text_encoders/mistral_3_small_flux2_fp8.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "person_yolov8m-seg.pt": {
+      "category": "ultralytics/segm",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Bingsu/adetailer",
+          "file": "person_yolov8m-seg.pt",
+          "revision": "main"
+        },
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "person_yolov8m-seg"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "pika_h3_flex_fl2va_v1_bf16.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "loras/pika_h3_flex_fl2va_v1_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "pika_h3_flex_ref2va_v1_bf16.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "loras/pika_h3_flex_ref2va_v1_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "qwen3.5_4b_bf16.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen3.5",
+          "file": "text_encoders/qwen3.5_4b_bf16.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "qwen3vl_32b_minimax_h3_bf16.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "qwen3vl_32b_minimax_h3_bf16"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/MiniMax-H3",
+          "file": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "qwen3vl_8b_bf16.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen-Image-2.1",
+          "file": "text_encoders/qwen3vl_8b_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen3-VL",
+          "file": "text_encoders/qwen3vl_8b_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "qwen_2.5_vl_7b_fp8_scaled.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+          "file": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "qwen_3_4b.safetensors": {
+      "category": "text_encoders",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/z_image_turbo",
+          "file": "split_files/text_encoders/qwen_3_4b.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "qwen_image_2.1_bf16.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen-Image-2.1",
+          "file": "diffusion_models/qwen_image_2.1_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "qwen_image_2.1_vae_bf16.safetensors": {
+      "category": "vae",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen-Image-2.1",
+          "file": "vae/qwen_image_2.1_vae_bf16.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "manual"
+        }
+      ]
+    },
+    "qwen_image_fp8_e4m3fn.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+          "file": "split_files/diffusion_models/qwen_image_fp8_e4m3fn.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "qwen_image_vae.safetensors": {
+      "category": "vae",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+          "file": "split_files/vae/qwen_image_vae.safetensors",
+          "revision": "main"
+        }
+      ]
+    },
+    "z_image_turbo_bf16.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "Comfy-Org/z_image_turbo",
+          "file": "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+          "revision": "main"
+        }
+      ]
+    }
+  },
+  "coreNodes": [
+    "BasicGuider",
+    "BasicScheduler",
+    "CLIPLoader",
+    "CLIPTextEncode",
+    "ComfyMathExpression",
+    "ComfySwitchNode",
+    "ConditioningZeroOut",
+    "ControlNetInpaintingAliMamaApply",
+    "ControlNetLoader",
+    "CreateVideo",
+    "EasyCache",
+    "EmptyFlux2LatentImage",
+    "EmptyLatentImage",
+    "EmptyMiniMaxMusic3LatentAudio",
+    "EmptySD3LatentImage",
+    "Flux2Scheduler",
+    "FluxGuidance",
+    "GetImageSize",
+    "GetVideoComponents",
+    "GrowMask",
+    "ImageBlur",
+    "ImageCompositeMasked",
+    "ImageScaleToMaxDimension",
+    "ImageScaleToTotalPixels",
+    "ImageToMask",
+    "KSampler",
+    "KSamplerSelect",
+    "LoadAudio",
+    "LoadImage",
+    "LoadVideo",
+    "LoraLoaderModelOnly",
+    "MaskToImage",
+    "MiniMaxH3ImageToVideo",
+    "MiniMaxH3ReferenceToVideo",
+    "MiniMaxH3SigmaShift",
+    "MiniMaxMusic3TextEncode",
+    "ModelSamplingAuraFlow",
+    "PreviewAny",
+    "PrimitiveBoolean",
+    "PrimitiveFloat",
+    "PrimitiveInt",
+    "PrimitiveStringMultiline",
+    "QwenImage21Cache",
+    "RandomNoise",
+    "ReferenceLatent",
+    "SamplerCustomAdvanced",
+    "SaveAudioAdvanced",
+    "SaveImage",
+    "SaveImageAdvanced",
+    "SaveText",
+    "SaveVideo",
+    "SeedNode",
+    "SetLatentNoiseMask",
+    "TextEncodeQwenImage21",
+    "TextGenerate",
+    "UNETLoader",
+    "VAEDecode",
+    "VAEDecodeAudio",
+    "VAEDecodeAudioTiled",
+    "VAEEncode",
+    "VAELoader"
+  ],
+  "nodeOwners": {
+    "Float": "ComfyLiterals",
+    "Int": "ComfyLiterals",
+    "MiniMaxH3MemoryEfficientSageAttentionPatch": "ComfyUI-KJNodes",
+    "SetNode": "ComfyUI-KJNodes",
+    "ShowAny_UTK": "ComfyUI-UniversalToolkit",
+    "LayerMask: MaskPreview": "ComfyUI_LayerStyle",
+    "kkSomethingToAny": "Comfyui-kktools",
+    "VHS_VideoCombine": "ComfyUI-VideoHelperSuite",
+    "VHS_LoadAudioUpload": "ComfyUI-VideoHelperSuite",
+    "H3FaceTrackCrop": "ComfyUI-H3-FaceRefine",
+    "H3FaceStitch": "ComfyUI-H3-FaceRefine",
+    "H3InjectVideoLatent": "ComfyUI-H3-FaceRefine",
+    "H3PerFrameDenoise": "ComfyUI-H3-FaceRefine",
+    "H3FaceMaskSAM": "ComfyUI-H3-FaceRefine",
+    "H3FaceSelect": "ComfyUI-H3-FaceRefine",
+    "H3FaceTransformInfo": "ComfyUI-H3-FaceRefine",
+    "MiniMaxH3NativeAudioLock": "ComfyUI-H3-NativeAudioLock",
+    "SAMLoader": "ComfyUI-Impact-Pack",
+    "CLIPLoaderGGUF": "ComfyUI-GGUF",
+    "UnetLoaderGGUF": "ComfyUI-GGUF",
+    "ReShotDepthVideo": "ComfyUI-ReShot"
+  }
+}

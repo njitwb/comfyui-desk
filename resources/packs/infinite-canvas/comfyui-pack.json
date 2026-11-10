@@ -1,0 +1,1321 @@
+{
+  "schema": "comfyui-desk/pack@1",
+  "id": "infinite-canvas",
+  "name": "无限画布 · 全能力整合包",
+  "version": "1.0.0",
+  "createdAt": "2026-11-10T05:37:35.140Z",
+  "author": "ComfyUI Desk",
+  "description": "无限画布内置 8 大能力矩阵的一键还原包：工作流、自定义节点、Python 依赖与模型清单。大模型走云端下载，只有无法下载的小文件才随包分发。",
+  "requirements": {
+    "comfyui": {
+      "min": "0.44.2",
+      "recommended": "0.44.2"
+    },
+    "python": {
+      "min": "3.11",
+      "max": "3.13"
+    },
+    "diskFreeGB": 260,
+    "vramGB": 8
+  },
+  "components": [
+    {
+      "id": "image",
+      "name": "图像基础（T2I / I2I / 局部编辑）",
+      "description": "Z-Image-Turbo、Qwen-Image-2.1、Flux2.Dev 与 Qwen 局部重绘",
+      "defaultSelected": true,
+      "nodes": [
+        {
+          "key": "ComfyUI_LayerStyle",
+          "name": "ComfyUI_LayerStyle",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/chflame163/ComfyUI_LayerStyle.git"
+          },
+          "requirements": true,
+          "installPy": true
+        }
+      ],
+      "models": [
+        {
+          "filename": "qwen_3_4b.safetensors",
+          "category": "text_encoders",
+          "size": 8044982048,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/z_image_turbo",
+              "file": "split_files/text_encoders/qwen_3_4b.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen_3_4b"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "ae.safetensors",
+          "category": "vae",
+          "size": 335304388,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/z_image_turbo",
+              "file": "split_files/vae/ae.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "ae"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "z_image_turbo_bf16.safetensors",
+          "category": "diffusion_models",
+          "size": 12309866400,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/z_image_turbo",
+              "file": "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "z_image_turbo_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "flux2-vae.safetensors",
+          "category": "vae",
+          "size": 336213556,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Flux-2-Dev",
+              "file": "split_files/vae/flux2-vae.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "flux2-vae"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "flux2_dev_fp8mixed.safetensors",
+          "category": "diffusion_models",
+          "size": 35455599592,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Flux-2-Dev",
+              "file": "split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "flux2_dev_fp8mixed"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "mistral_3_small_flux2_fp8.safetensors",
+          "category": "text_encoders",
+          "size": 18034640095,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Flux-2-Dev",
+              "file": "split_files/text_encoders/mistral_3_small_flux2_fp8.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "mistral_3_small_flux2_fp8"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "Flux2TurboComfyv2.safetensors",
+          "category": "loras",
+          "size": 2760814872,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Flux-2-Dev",
+              "file": "split_files/loras/Flux2TurboComfyv2.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "Flux2TurboComfyv2"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen_image_2.1_bf16.safetensors",
+          "category": "diffusion_models",
+          "size": 14230280616,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen-Image-2.1",
+              "file": "diffusion_models/qwen_image_2.1_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen_image_2.1_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen3vl_8b_bf16.safetensors",
+          "category": "text_encoders",
+          "size": 17534334616,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen-Image-2.1",
+              "file": "text_encoders/qwen3vl_8b_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen3-VL",
+              "file": "text_encoders/qwen3vl_8b_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen3vl_8b_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen_image_2.1_vae_bf16.safetensors",
+          "category": "vae",
+          "size": 675509688,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen-Image-2.1",
+              "file": "vae/qwen_image_2.1_vae_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen_image_2.1_vae_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "category": "text_encoders",
+          "size": 9384670680,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+              "file": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen_2.5_vl_7b_fp8_scaled"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen_image_fp8_e4m3fn.safetensors",
+          "category": "diffusion_models",
+          "size": 20430635136,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+              "file": "split_files/diffusion_models/qwen_image_fp8_e4m3fn.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen_image_fp8_e4m3fn"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "Qwen-Image-InstantX-ControlNet-Inpainting.safetensors",
+          "category": "controlnet",
+          "size": 4234599432,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen-Image-InstantX-ControlNets",
+              "file": "split_files/controlnet/Qwen-Image-InstantX-ControlNet-Inpainting.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "Qwen-Image-InstantX-ControlNet-Inpainting"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen_image_vae.safetensors",
+          "category": "vae",
+          "size": 253806246,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+              "file": "split_files/vae/qwen_image_vae.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen_image_vae"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "Qwen-Image-Lightning-4steps-V1.0.safetensors",
+          "category": "loras",
+          "size": 1698951104,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "lightx2v/Qwen-Image-Lightning",
+              "file": "Qwen-Image-Lightning-4steps-V1.0.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
+              "repo": "lightx2v/Qwen-Image-Lightning",
+              "file": "loras/Qwen-Image-Lightning-4steps-V1.0.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "Qwen-Image-Lightning-4steps-V1.0"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "name": "z image turbo",
+          "format": "ui",
+          "file": "payload/workflows/image/z_image_turbo_workflow.json"
+        },
+        {
+          "name": "flux2 dev i2i",
+          "format": "ui",
+          "file": "payload/workflows/image/flux2_dev_i2i_workflow.json"
+        },
+        {
+          "name": "image flux2.dev mult image edit",
+          "format": "ui",
+          "file": "payload/workflows/image/image_flux2.dev_mult_image_edit_workflow.json"
+        },
+        {
+          "name": "qwen image inpaint",
+          "format": "ui",
+          "file": "payload/workflows/image/qwen_image_inpaint_workflow.json"
+        },
+        {
+          "name": "mask edit",
+          "format": "ui",
+          "file": "payload/workflows/image/mask_edit_workflow.json"
+        }
+      ]
+    },
+    {
+      "id": "text",
+      "name": "文本生成 / 反推",
+      "description": "Qwen3.5 4B 本地端侧文本生成与视觉反推",
+      "defaultSelected": true,
+      "nodes": [
+        {
+          "key": "Comfyui-kktools",
+          "name": "Comfyui-kktools",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/zhiwendesign/Comfyui-kktools.git",
+            "commit": "f8c9d81267176a64e94cd5b092bb8acaa4315bad"
+          },
+          "requirements": true,
+          "installPy": true
+        },
+        {
+          "key": "ComfyUI-UniversalToolkit",
+          "name": "ComfyUI-UniversalToolkit",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/whmc76/ComfyUI-UniversalToolkit.git"
+          },
+          "requirements": true,
+          "installPy": true
+        }
+      ],
+      "models": [
+        {
+          "filename": "qwen3.5_4b_bf16.safetensors",
+          "category": "text_encoders",
+          "size": 9319828320,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/Qwen3.5",
+              "file": "text_encoders/qwen3.5_4b_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen3.5_4b_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "name": "qwen3 5 text",
+          "format": "ui",
+          "file": "payload/workflows/text/qwen3_5_text_workflow.json"
+        },
+        {
+          "name": "llm qwen3 5 text gen",
+          "format": "ui",
+          "file": "payload/workflows/text/llm_qwen3_5_text_gen_workflow.json"
+        }
+      ]
+    },
+    {
+      "id": "video-omni",
+      "name": "全能参考视频（6 规格）",
+      "description": "MiniMax H3 全能参考：FP8/INT8/BF16 × 20步/4步PDMD/6步Pika/8步Turbo",
+      "defaultSelected": true,
+      "nodes": [
+        {
+          "key": "ComfyLiterals",
+          "name": "ComfyLiterals",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/M1kep/ComfyLiterals.git",
+            "commit": "bdddb08ca82d90d75d97b1d437a652e0284a32ac"
+          },
+          "requirements": true,
+          "installPy": true
+        },
+        {
+          "key": "ComfyUI-KJNodes",
+          "name": "ComfyUI-KJNodes",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/kijai/ComfyUI-KJNodes.git"
+          },
+          "requirements": true,
+          "installPy": true
+        }
+      ],
+      "models": [
+        {
+          "filename": "minimax_h3_video_vae_fp16.safetensors",
+          "category": "vae",
+          "size": 5207808496,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "vae/minimax_h3_video_vae_fp16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_video_vae_fp16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_audio_vae_fp32.safetensors",
+          "category": "vae",
+          "size": 605254808,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "vae/minimax_h3_audio_vae_fp32.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_audio_vae_fp32"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+          "category": "diffusion_models",
+          "size": 20958205608,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_ref2va_pruned_fp8_scaled"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "category": "text_encoders",
+          "size": 15687142551,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen3vl_32b_minimax_h3_nvfp4_awq"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors",
+          "category": "loras",
+          "size": 558735392,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Kijai/MiniMax-H3-experimental",
+              "file": "loras/minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "loras/minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_pdmd_4step_lora_avg_rank_57_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_ref2va_int8_convrot.safetensors",
+          "category": "diffusion_models",
+          "size": 20970379616,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_ref2va_int8_convrot"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "pika_h3_flex_ref2va_v1_bf16.safetensors",
+          "category": "loras",
+          "size": 1956172304,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "loras/pika_h3_flex_ref2va_v1_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "pika_h3_flex_ref2va_v1_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_ref2va_bf16.safetensors",
+          "category": "diffusion_models",
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_ref2va_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_ref2va_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen3vl_32b_minimax_h3_bf16.safetensors",
+          "category": "text_encoders",
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen3vl_32b_minimax_h3_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+          "category": "loras",
+          "size": 306731560,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Kijai/MiniMax-H3_comfy",
+              "file": "loras/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "loras/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "name": "minimax h3 ref2v 4step pdmd",
+          "format": "ui",
+          "file": "payload/workflows/video-omni/minimax_h3_ref2v_4step_pdmd_workflow.json"
+        },
+        {
+          "name": "minimax h3 ref2v int8 convrot 4step pdmd",
+          "format": "ui",
+          "file": "payload/workflows/video-omni/minimax_h3_ref2v_int8_convrot_4step_pdmd_workflow.json"
+        },
+        {
+          "name": "minimax h3 ref2v",
+          "format": "ui",
+          "file": "payload/workflows/video-omni/minimax_h3_ref2v_workflow.json"
+        },
+        {
+          "name": "minimax h3 ref2va",
+          "format": "ui",
+          "file": "payload/workflows/video-omni/minimax_h3_ref2va_workflow.json"
+        },
+        {
+          "name": "minimax H3 i2v&t2v",
+          "format": "ui",
+          "file": "payload/workflows/video-omni/minimax_H3_i2v&t2v_workflow.json"
+        }
+      ]
+    },
+    {
+      "id": "video-frame",
+      "name": "首尾帧视频（6 规格）",
+      "description": "MiniMax H3 首尾帧插值：FP8/INT8/BF16 × 20步/4步PDMD/6步Pika/8步Turbo",
+      "defaultSelected": true,
+      "nodes": [
+        {
+          "key": "ComfyLiterals",
+          "name": "ComfyLiterals",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/M1kep/ComfyLiterals.git",
+            "commit": "bdddb08ca82d90d75d97b1d437a652e0284a32ac"
+          },
+          "requirements": true,
+          "installPy": true
+        },
+        {
+          "key": "ComfyUI-KJNodes",
+          "name": "ComfyUI-KJNodes",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/kijai/ComfyUI-KJNodes.git"
+          },
+          "requirements": true,
+          "installPy": true
+        }
+      ],
+      "models": [
+        {
+          "filename": "minimax_h3_video_vae_fp16.safetensors",
+          "category": "vae",
+          "size": 5207808496,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "vae/minimax_h3_video_vae_fp16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_video_vae_fp16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_audio_vae_fp32.safetensors",
+          "category": "vae",
+          "size": 605254808,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "vae/minimax_h3_audio_vae_fp32.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_audio_vae_fp32"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+          "category": "diffusion_models",
+          "size": 20958205608,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_fl2va_pruned_fp8_scaled"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "category": "text_encoders",
+          "size": 15687142551,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen3vl_32b_minimax_h3_nvfp4_awq"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors",
+          "category": "loras",
+          "size": 558735392,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Kijai/MiniMax-H3-experimental",
+              "file": "loras/minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "loras/minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_pdmd_4step_lora_avg_rank_57_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_fl2va_int8_convrot.safetensors",
+          "category": "diffusion_models",
+          "size": 20970379616,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_fl2va_int8_convrot"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "pika_h3_flex_fl2va_v1_bf16.safetensors",
+          "category": "loras",
+          "size": 1956172304,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "loras/pika_h3_flex_fl2va_v1_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "pika_h3_flex_fl2va_v1_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen3vl_32b_minimax_h3_bf16.safetensors",
+          "category": "text_encoders",
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen3vl_32b_minimax_h3_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_fl2va_bf16.safetensors",
+          "category": "diffusion_models",
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_fl2va_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_fl2va_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+          "category": "loras",
+          "size": 1956193000,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "name": "minimax h3 fl2va fp8 4step pdmd",
+          "format": "ui",
+          "file": "payload/workflows/video-frame/minimax_h3_fl2va_fp8_4step_pdmd_workflow.json"
+        },
+        {
+          "name": "minimax h3 fl2va int8 convrot 4step pdmd",
+          "format": "ui",
+          "file": "payload/workflows/video-frame/minimax_h3_fl2va_int8_convrot_4step_pdmd_workflow.json"
+        },
+        {
+          "name": "minimax h3 fl2va int8 convrot 6step pika",
+          "format": "ui",
+          "file": "payload/workflows/video-frame/minimax_h3_fl2va_int8_convrot_6step_pika_workflow.json"
+        },
+        {
+          "name": "minimax h3 fl2va",
+          "format": "ui",
+          "file": "payload/workflows/video-frame/minimax_h3_fl2va_workflow.json"
+        }
+      ]
+    },
+    {
+      "id": "audio",
+      "name": "MiniMax Music 03",
+      "description": "双文本驱动的歌曲 / BGM / 器乐生成",
+      "defaultSelected": true,
+      "nodes": [
+        {
+          "key": "ComfyLiterals",
+          "name": "ComfyLiterals",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/M1kep/ComfyLiterals.git",
+            "commit": "bdddb08ca82d90d75d97b1d437a652e0284a32ac"
+          },
+          "requirements": true,
+          "installPy": true
+        }
+      ],
+      "models": [
+        {
+          "filename": "minimax_music3_dit_fp32.safetensors",
+          "category": "diffusion_models",
+          "size": 9828345396,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-Music-3",
+              "file": "diffusion_models/minimax_music3_dit_fp32.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_music3_dit_fp32"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_music3_text_encoder_bf16.safetensors",
+          "category": "text_encoders",
+          "size": 18472478038,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-Music-3",
+              "file": "text_encoders/minimax_music3_text_encoder_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_music3_text_encoder_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_music3_dav.safetensors",
+          "category": "vae",
+          "size": 216696128,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-Music-3",
+              "file": "vae/minimax_music3_dav.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_music3_dav"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "name": "audio minimax music 3",
+          "format": "ui",
+          "file": "payload/workflows/audio/audio_minimax_music_3_workflow.json"
+        }
+      ]
+    },
+    {
+      "id": "face-refine",
+      "name": "H3 人脸精修",
+      "description": "YOLO 时序追踪裁剪 + 音频锁 + 逐帧去噪 + 无缝缝合",
+      "defaultSelected": true,
+      "nodes": [
+        {
+          "key": "ComfyUI-H3-FaceRefine",
+          "name": "ComfyUI-H3-FaceRefine",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/Carasibana/ComfyUI-H3-FaceRefine.git"
+          },
+          "requirements": true,
+          "installPy": true
+        },
+        {
+          "key": "ComfyUI-H3-NativeAudioLock",
+          "name": "ComfyUI-H3-NativeAudioLock",
+          "source": {
+            "type": "bundle",
+            "path": "payload/custom_nodes/ComfyUI-H3-NativeAudioLock"
+          },
+          "requirements": true
+        },
+        {
+          "key": "ComfyUI-VideoHelperSuite",
+          "name": "ComfyUI-VideoHelperSuite",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
+          },
+          "requirements": true,
+          "installPy": true
+        }
+      ],
+      "models": [
+        {
+          "filename": "minimax_h3_video_vae_fp16.safetensors",
+          "category": "vae",
+          "size": 5207808496,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "vae/minimax_h3_video_vae_fp16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_video_vae_fp16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_audio_vae_fp32.safetensors",
+          "category": "vae",
+          "size": 605254808,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "vae/minimax_h3_audio_vae_fp32.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_audio_vae_fp32"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+          "category": "loras",
+          "size": 1956193000,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+          "category": "diffusion_models",
+          "size": 20958205608,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "diffusion_models/minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "minimax_h3_ref2va_pruned_fp8_scaled"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "category": "text_encoders",
+          "size": 15687142551,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Comfy-Org/MiniMax-H3",
+              "file": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "qwen3vl_32b_minimax_h3_nvfp4_awq"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "person_yolov8m-seg.pt",
+          "category": "ultralytics/segm",
+          "size": 54827683,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Bingsu/adetailer",
+              "file": "person_yolov8m-seg.pt",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "person_yolov8m-seg"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "face_yolov8m.pt",
+          "category": "ultralytics/bbox",
+          "size": 52026019,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "Bingsu/adetailer",
+              "file": "face_yolov8m.pt",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "face_yolov8m"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "name": "H3 Face Refine Auto Select",
+          "format": "ui",
+          "file": "payload/workflows/face-refine/H3_Face_Refine_Auto_Select_workflow.json"
+        }
+      ]
+    },
+    {
+      "id": "depth",
+      "name": "ReShot 深度视频",
+      "description": "单目视频时序连续深度估计（ReShot / Video Depth Anything）",
+      "defaultSelected": true,
+      "nodes": [
+        {
+          "key": "ComfyUI-ReShot",
+          "name": "ComfyUI-ReShot",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/maosika-ai/ComfyUI-ReShot.git",
+            "commit": "3575e39e463cc41588e3f1ef3daa3e15c768d78e"
+          },
+          "requirements": true,
+          "installPy": true
+        }
+      ]
+    }
+  ]
+}

@@ -12,6 +12,7 @@ export default {
   'nav.models': ['模型管理', 'Models'],
   'nav.nodes': ['节点管理', 'Nodes'],
   'nav.workflows': ['工作流', 'Workflows'],
+  'nav.packs': ['整合包', 'Packs'],
   'nav.tools': ['诊断', 'Diagnostics'],
   'nav.settings': ['设置', 'Settings'],
   'nav.about': ['关于', 'About'],

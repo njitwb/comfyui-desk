@@ -35,6 +35,9 @@ extraResources:
     to: canvas-agent/node_modules
     filter:
       - "**/*"
+  # 内置整合包定义（comfyui-pack.json + payload/），运行时从 process.resourcesPath/packs 读取
+  - from: resources/packs
+    to: packs
 
 # 便携 Node 22 运行时：DeepSeek Harness（dsh）要求 Node ^22.19 || >=24，
 # 而 Electron 33 自带的是 Node 20.18.3（用 ELECTRON_RUN_AS_NODE 跑 dsh 会静默退出）。

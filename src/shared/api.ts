@@ -1,6 +1,16 @@
 // 渲染进程与主进程共享的类型与 IPC 常量
 
 import type { Theme } from './appearance'
+import type {
+  PackApplyRequest,
+  PackApplyResult,
+  PackExportCandidate,
+  PackExportRequest,
+  PackExportResult,
+  PackInspectResult,
+  PackProgressEvent,
+  PackRecord
+} from './pack'
 
 export interface GpuInfo {
   name: string
@@ -197,6 +207,8 @@ export interface DownloadStart {
   category?: string
   filename?: string
   useHfMirror?: boolean
+  /** 相对 models 根的目标子路径，支持嵌套（如 ultralytics/segm）；优先于 category */
+  destRelPath?: string
 }
 
 /** 在线模型库来源：hf=HuggingFace（可切国内镜像 hf-mirror.com），ms=魔搭 ModelScope */
@@ -383,6 +395,22 @@ export interface LauncherApi {
   importWorkflow(): Promise<WorkflowItem[]>
   queueWorkflow(path: string): Promise<{ promptId: string; number: number }>
   deleteWorkflow(path: string): Promise<void>
+  // packs（整合包：导入 / 导出）
+  /** 选择整合包 zip（取消返回 null） */
+  packPickZip(): Promise<string | null>
+  /** 预检整合包；ref 可以是 zip 路径或 `builtin:<id>` */
+  packInspect(ref: string): Promise<PackInspectResult>
+  /** 执行导入（后台任务，进度走 onPackProgress） */
+  packApply(req: PackApplyRequest): Promise<PackApplyResult>
+  /** 取消当前导入任务 */
+  packCancel(): Promise<void>
+  /** 导出候选项（组件与模型列表） */
+  packExportPreview(source: 'builtin' | 'current', builtinId?: string): Promise<PackExportCandidate>
+  /** 生成整合包 zip */
+  packExport(req: PackExportRequest): Promise<PackExportResult>
+  /** 已导入记录 */
+  packInstalled(): Promise<PackRecord[]>
+  onPackProgress(cb: (e: PackProgressEvent) => void): () => void
   // terminal（交互式 PTY 会话；shell 自动选择 Git Bash / PowerShell）
   termOpen(cols: number, rows: number): Promise<{ id: number; shell: string }>
   termWrite(id: number, data: string): Promise<void>
@@ -489,6 +517,15 @@ export const IPC = {
   workflowsImport: 'workflows:import',
   workflowsQueue: 'workflows:queue',
   workflowsDelete: 'workflows:delete',
+  // packs
+  packsPick: 'packs:pick',
+  packsInspect: 'packs:inspect',
+  packsApply: 'packs:apply',
+  packsCancel: 'packs:cancel',
+  packsExportPreview: 'packs:exportPreview',
+  packsExport: 'packs:export',
+  packsInstalled: 'packs:installed',
+  evPackProgress: 'ev:packProgress',
   // terminal
   termOpen: 'term:open',
   termWrite: 'term:write',
