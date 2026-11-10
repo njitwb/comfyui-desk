@@ -22,10 +22,11 @@ beforeEach(async () => {
   comfy = path.join(userData, 'runtime', 'ComfyUI')
   fs.mkdirSync(comfy, { recursive: true })
   fs.writeFileSync(path.join(comfy, 'main.py'), '# fake')
-  const venv = path.join(userData, 'runtime', '.venv', 'bin')
-  fs.mkdirSync(venv, { recursive: true })
-  fs.writeFileSync(path.join(venv, 'python'), '# fake python')
   settings.saveSettings({ installPath: path.join(userData, 'runtime') })
+  // venv 路径按平台解析（Windows 是 .venv\Scripts\python.exe），避免测试只在 POSIX 成立
+  const venvPython = settings.paths().venvPython
+  fs.mkdirSync(path.dirname(venvPython), { recursive: true })
+  fs.writeFileSync(venvPython, '# fake python')
   pack = await import('../src/main/pack')
 })
 
