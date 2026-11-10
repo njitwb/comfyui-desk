@@ -1474,7 +1474,7 @@
         "Node name for S&R": "H3FaceTrackCrop"
       },
       "widgets_values": [
-        "segm/person_yolov8m-seg.pt",
+        "bbox/face_yolov8m.pt",
         0.35,
         3,
         768,
@@ -1487,7 +1487,7 @@
         true,
         0.28,
         "largest_face",
-        "bbox/face_yolov8m.pt",
+        "segm/person_yolov8m-seg.pt",
         0.5,
         0,
         "clip_vision",
@@ -1499,7 +1499,7 @@
         0
       ],
       "widgets_values_named": {
-        "detector": "segm\\person_yolov8m-seg.pt",
+        "detector": "bbox\\face_yolov8m.pt",
         "confidence": 0.35,
         "crop_factor": 3,
         "canvas_width": 768,
@@ -1512,7 +1512,7 @@
         "identity_track": true,
         "identity_threshold": 0.28,
         "select": "largest_face",
-        "fallback_detector": "bbox\\face_yolov8m.pt",
+        "fallback_detector": "segm\\person_yolov8m-seg.pt",
         "fallback_head_frac": 0.5,
         "select_index": 0,
         "identity_model": "clip_vision",

@@ -1080,22 +1080,116 @@ function workflowHasYoloPaths(workflow: ComfyuiWorkflowJson): boolean {
     return false;
 }
 
+/** H3FaceTrackCrop 这类节点的检测器下拉输入名。 */
+const DETECTOR_INPUT_NAME = /^(fallback_)?detector$/i;
+/** 形如 face_yolov8m.pt、bbox/face_yolov8m.pt 的模型文件值。 */
+const MODEL_FILE_VALUE = /(?:^|[\\/])[^\\/]+\.(?:pt|pth|onnx|safetensors|ckpt)$/i;
+
+function normalizeModelChoice(value: string): string {
+    return value.replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase();
+}
+
+/**
+ * 把工作流里的模型下拉值映射到宿主 ComfyUI 实际可选的值上。
+ *
+ * 检测器下拉由节点调用 folder_paths 枚举得到，列表内容取决于宿主装了什么：
+ * 装了 ComfyUI-Impact-Pack（注册 ultralytics_bbox / ultralytics 目录）时是
+ * `bbox\face_yolov8m.pt`、`segm\person_yolov8m-seg.pt` 这种带子目录的形式，
+ * 没装时只有 `face_yolov8m.pt` 一个名字，跨平台也不一定用同一个分隔符。
+ * 返回 undefined 表示无需改动（服务器已接受该值，或无任何可替代选项）。
+ */
+export function resolveModelChoice(value: string, inputName: string, options: readonly unknown[]): string | undefined {
+    const choices = options.filter((option): option is string => typeof option === "string" && option.trim() !== "");
+    if (!choices.length || choices.includes(value)) return undefined;
+
+    const wanted = normalizeModelChoice(value);
+    // 1. 只是分隔符/大小写不同（Windows 主机列出 bbox\face_yolov8m.pt）
+    const samePath = choices.find((option) => normalizeModelChoice(option) === wanted);
+    if (samePath) return samePath;
+    // 其余规则只针对模型文件，避免误改普通文本参数
+    if (!MODEL_FILE_VALUE.test(value)) return undefined;
+
+    // 2. 同一个模型文件被宿主放在别的子目录（只列出 face_yolov8m.pt）
+    const fileName = wanted.split("/").pop();
+    const sameFile = choices.find((option) => normalizeModelChoice(option).split("/").pop() === fileName);
+    if (sameFile) return sameFile;
+
+    if (!DETECTOR_INPUT_NAME.test(inputName)) return undefined;
+    // 3. 兜底：人脸精修必须有一个检测器；fallback 允许关闭（节点按插值处理）
+    if (/^fallback/i.test(inputName)) return choices.find((option) => normalizeModelChoice(option) === "none");
+    return choices.find((option) => MODEL_FILE_VALUE.test(option) && /face/i.test(option))
+        ?? choices.find((option) => MODEL_FILE_VALUE.test(option));
+}
+
+/** baseUrl → (class_type, 输入名, 工作流原值) → 宿主实际接受的选项。 */
+const detectorChoiceCache = new Map<string, Map<string, string>>();
+
+function detectorChoiceKey(classType: string, inputName: string, value: string): string {
+    return `${classType}\u0000${inputName}\u0000${value}`;
+}
+
+/** 仅供测试：清空“宿主实际接受的检测器选项”缓存。 */
+export function resetComfyuiDetectorChoiceCache() {
+    detectorChoiceCache.clear();
+}
+
+/** 用上一次校验得到的替换结果预修正，避免每次提交都先撞一次 400。 */
+function applyKnownDetectorChoices(workflow: ComfyuiWorkflowJson, baseUrl: string): ComfyuiWorkflowJson {
+    const cache = detectorChoiceCache.get(normalizeBaseUrl(baseUrl));
+    if (!cache?.size) return workflow;
+    let changed = false;
+    const cloned = structuredClone(workflow);
+    for (const node of Object.values(cloned)) {
+        if (!node || typeof node !== "object") continue;
+        const { class_type: classType, inputs } = node as { class_type?: unknown; inputs?: Record<string, unknown> };
+        if (typeof classType !== "string" || !inputs) continue;
+        for (const [input, value] of Object.entries(inputs)) {
+            if (typeof value !== "string") continue;
+            const known = cache.get(detectorChoiceKey(classType, input, value));
+            if (typeof known === "string" && known !== value) {
+                inputs[input] = known;
+                changed = true;
+            }
+        }
+    }
+    return changed ? cloned : workflow;
+}
+
+/** 记住校验通过后的替换关系（以工作流原始值为键）。 */
+function rememberDetectorChoices(baseUrl: string, original: ComfyuiWorkflowJson, submitted: ComfyuiWorkflowJson) {
+    const normalized = normalizeBaseUrl(baseUrl);
+    for (const [id, node] of Object.entries(submitted)) {
+        if (!node || typeof node !== "object") continue;
+        const { class_type: classType, inputs } = node as { class_type?: unknown; inputs?: Record<string, unknown> };
+        if (typeof classType !== "string" || !inputs) continue;
+        const originalInputs = (original[id] as { inputs?: Record<string, unknown> } | undefined)?.inputs;
+        for (const [input, submittedValue] of Object.entries(inputs)) {
+            const originalValue = originalInputs?.[input];
+            if (typeof submittedValue !== "string" || typeof originalValue !== "string" || originalValue === submittedValue) continue;
+            let cache = detectorChoiceCache.get(normalized);
+            if (!cache) detectorChoiceCache.set(normalized, (cache = new Map()));
+            cache.set(detectorChoiceKey(classType, input, originalValue), submittedValue);
+        }
+    }
+}
+
 /**
  * Submit a bound workflow to ComfyUI's /prompt endpoint; returns prompt_id as jobId.
- * 适配检测器路径；仅在 HTTP 400 明确拒绝任务且提供等价路径选项时修正后重试一次。
+ * 适配检测器路径与宿主实际可选的检测器模型；仅在 HTTP 400 明确拒绝任务时修正后重试一次。
  */
 export async function submitJob(workflow: ComfyuiWorkflowJson, baseUrl: string, token?: string): Promise<string> {
     if (!workflow || typeof workflow !== "object" || Object.keys(workflow).length === 0) {
         throw new ComfyuiNoWorkflowError("工作流拓扑为空，请检查当前渠道工作流配置或重新选择有效的工作流");
     }
 
+    const knownWorkflow = applyKnownDetectorChoices(workflow, baseUrl);
     // 1. 若工作流包含 segm/bbox 路径，探测主机操作系统并自适应转换路径
-    if (!workflowHasYoloPaths(workflow)) {
+    if (knownWorkflow === workflow && !workflowHasYoloPaths(workflow)) {
         return await submitJobInternal(workflow, baseUrl, token);
     }
 
     const targetOs = await detectComfyuiHostOs(baseUrl, token);
-    const adaptedWorkflow = adaptWorkflowModelPaths(workflow, targetOs);
+    const adaptedWorkflow = adaptWorkflowModelPaths(knownWorkflow, targetOs);
 
     try {
         return await submitJobInternal(adaptedWorkflow, baseUrl, token);
@@ -1108,18 +1202,20 @@ export async function submitJob(workflow: ComfyuiWorkflowJson, baseUrl: string, 
             for (const issue of Array.isArray(nodeError?.errors) ? nodeError.errors : []) {
                 if (issue.type !== "value_not_in_list") continue;
                 const input = issue.extra_info?.input_name;
-                const value = input && node?.inputs?.[input];
+                const value = input ? node?.inputs?.[input] : undefined;
                 const options = issue.extra_info?.input_config;
-                if (typeof value !== "string" || !/(?:^|[\\/])(bbox|segm)[\\/]/i.test(value) || !Array.isArray(options) || !Array.isArray(options[0])) continue;
-                const candidate = options[0].find((option: unknown) => typeof option === "string" && option.replace(/\\/g, "/") === value.replace(/\\/g, "/"));
-                if (typeof candidate === "string" && candidate !== value) {
-                    node!.inputs![input!] = candidate;
+                if (!input || typeof value !== "string" || !Array.isArray(options) || !Array.isArray(options[0])) continue;
+                const replacement = resolveModelChoice(value, input, options[0] as readonly unknown[]);
+                if (typeof replacement === "string" && replacement !== value) {
+                    node!.inputs![input] = replacement;
                     changed = true;
                 }
             }
         }
-        if (changed) return await submitJobInternal(corrected, baseUrl, token);
-        throw error;
+        if (!changed) throw error;
+        const jobId = await submitJobInternal(corrected, baseUrl, token);
+        rememberDetectorChoices(baseUrl, workflow, corrected);
+        return jobId;
     }
 }
 

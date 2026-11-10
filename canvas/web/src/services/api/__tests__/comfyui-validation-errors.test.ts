@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import { ComfyuiApiError, submitJob } from "@/services/api/comfyui";
+import { ComfyuiApiError, resetComfyuiDetectorChoiceCache, resolveModelChoice, submitJob } from "@/services/api/comfyui";
 
 vi.mock("localforage", () => ({ default: { createInstance: () => ({ setItem: vi.fn(async () => undefined) }) } }));
 
@@ -113,6 +113,80 @@ it("does not repeat submission after a network failure whose endpoint contains a
         : posts()));
     await expect(submitJob(detectorWorkflow, "http://bbox-host:8188")).rejects.toThrow("未能联通");
     expect(posts).toHaveBeenCalledTimes(1);
+});
+
+it("maps a rejected detector value onto the models the host actually lists", () => {
+    expect(resolveModelChoice("segm/person_yolov8m-seg.pt", "detector", ["face_yolov8m.pt"])).toBe("face_yolov8m.pt");
+    expect(resolveModelChoice("bbox/face_yolov8m.pt", "detector", ["face_yolov8m.pt"])).toBe("face_yolov8m.pt");
+    expect(resolveModelChoice("bbox/face_yolov8m.pt", "detector", ["bbox\\face_yolov8m.pt"])).toBe("bbox\\face_yolov8m.pt");
+    // fallback 优先保留“同一个模型文件换个目录”，真的没有才退化成 none（按插值处理）
+    expect(resolveModelChoice("bbox/face_yolov8m.pt", "fallback_detector", ["none", "face_yolov8m.pt"])).toBe("face_yolov8m.pt");
+    expect(resolveModelChoice("segm/person_yolov8m-seg.pt", "fallback_detector", ["none", "face_yolov8m.pt"])).toBe("none");
+    expect(resolveModelChoice("segm/person_yolov8m-seg.pt", "fallback_detector", ["none", "segm\\person_yolov8m-seg.pt"])).toBe("segm\\person_yolov8m-seg.pt");
+    // 已经可选、非模型文件、或宿主什么都没列时保持原值，交由服务器报错
+    expect(resolveModelChoice("face_yolov8m.pt", "detector", ["face_yolov8m.pt"])).toBeUndefined();
+    expect(resolveModelChoice("largest_face", "select", ["largest_face", "centre_most"])).toBeUndefined();
+    expect(resolveModelChoice("segm/person_yolov8m-seg.pt", "detector", [])).toBeUndefined();
+});
+
+/** 人脸精修工作流里的检测器组合：人脸检测器为主，人体分割模型做兜底。 */
+const faceRefineWorkflow = {
+    "2": { class_type: "H3FaceTrackCrop", inputs: { detector: "bbox/face_yolov8m.pt", fallback_detector: "segm/person_yolov8m-seg.pt" } },
+};
+const plainNameDetectorErrors = {
+    "2": {
+        class_type: "H3FaceTrackCrop",
+        errors: [
+            {
+                type: "value_not_in_list",
+                message: "Value not in list",
+                details: "detector: 'bbox/face_yolov8m.pt' not in ['face_yolov8m.pt']",
+                extra_info: { input_name: "detector", input_config: [["face_yolov8m.pt"], {}], received_value: "bbox/face_yolov8m.pt" },
+            },
+            {
+                type: "value_not_in_list",
+                message: "Value not in list",
+                details: "fallback_detector: 'segm/person_yolov8m-seg.pt' not in ['none', 'face_yolov8m.pt']",
+                extra_info: { input_name: "fallback_detector", input_config: [["none", "face_yolov8m.pt"], {}], received_value: "segm/person_yolov8m-seg.pt" },
+            },
+        ],
+    },
+};
+
+it("resubmits the face-refine workflow with the host's plain detector names", async () => {
+    resetComfyuiDetectorChoiceCache();
+    const submitted: Record<string, { inputs: Record<string, unknown> }>[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input, init) => {
+        if (String(input).endsWith("/system_stats")) return Response.json({ system: { os: "posix" } });
+        submitted.push(JSON.parse(String(init?.body)).prompt);
+        const inputs = submitted[submitted.length - 1]["2"].inputs;
+        if (inputs.detector === "face_yolov8m.pt" && inputs.fallback_detector === "none") return Response.json({ prompt_id: "plain-path" });
+        return Response.json({ node_errors: plainNameDetectorErrors }, { status: 400 });
+    }));
+
+    await expect(submitJob(faceRefineWorkflow, "http://plain-names:8188")).resolves.toBe("plain-path");
+    expect(submitted).toHaveLength(2);
+    expect(submitted[0]["2"].inputs).toMatchObject({ detector: "bbox/face_yolov8m.pt", fallback_detector: "segm/person_yolov8m-seg.pt" });
+    expect(submitted[1]["2"].inputs).toMatchObject({ detector: "face_yolov8m.pt", fallback_detector: "none" });
+    // 缓存下来的替换关系不能污染调用方传进来的工作流
+    expect(faceRefineWorkflow["2"].inputs.detector).toBe("bbox/face_yolov8m.pt");
+});
+
+it("reuses the resolved detector names so a later submission does not fail validation first", async () => {
+    resetComfyuiDetectorChoiceCache();
+    let posts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input, init) => {
+        if (String(input).endsWith("/system_stats")) return Response.json({ system: { os: "posix" } });
+        posts += 1;
+        const inputs = JSON.parse(String(init?.body)).prompt["2"].inputs;
+        return posts === 1 && inputs.detector === "bbox/face_yolov8m.pt"
+            ? Response.json({ node_errors: plainNameDetectorErrors }, { status: 400 })
+            : Response.json({ prompt_id: `job-${posts}` });
+    }));
+
+    await expect(submitJob(faceRefineWorkflow, "http://cached-names:8188")).resolves.toBe("job-2");
+    await expect(submitJob(faceRefineWorkflow, "http://cached-names:8188")).resolves.toBe("job-3");
+    expect(posts).toBe(3);
 });
 
 it("keeps an explicit outer node_type_not_found code when its message is only Unknown node", async () => {

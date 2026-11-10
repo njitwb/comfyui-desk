@@ -1586,7 +1586,7 @@ export default function GuidePage() {
                                 5. 人脸精修 YOLO 权重路径与跨系统兼容？
                             </h3>
                             <p className="mt-2 text-xs leading-5 text-stone-600 dark:text-stone-400">
-                                人脸精修依赖 YOLO 实例分割与人脸检测权重。请将 <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-stone-800 dark:bg-stone-800 dark:text-stone-200">person_yolov8m-seg.pt</code> 放入 <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-stone-800 dark:bg-stone-800 dark:text-stone-200">models/ultralytics/segm/</code> 目录。系统向 ComfyUI 提交任务时会自动识别宿主系统，并在 Windows 反斜杠 (<code className="font-mono">\</code>) 与 Linux 正斜杠 (<code className="font-mono">/</code>) 间自适应平滑转换。
+                                人脸精修依赖 YOLO 实例分割与人脸检测权重。请将 <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-stone-800 dark:bg-stone-800 dark:text-stone-200">person_yolov8m-seg.pt</code> 放入 <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-stone-800 dark:bg-stone-800 dark:text-stone-200">models/ultralytics/segm/</code> 目录。系统向 ComfyUI 提交任务时会自动识别宿主系统，并在 Windows 反斜杠 (<code className="font-mono">\</code>) 与 Linux 正斜杠 (<code className="font-mono">/</code>) 间自适应平滑转换；如果宿主没有安装 ComfyUI-Impact-Pack（它才会注册 <code className="font-mono">ultralytics_bbox</code> 目录，缺少它时检测器下拉只列出 <code className="font-mono">face_yolov8m.pt</code> 这类裸文件名），系统会按宿主实际列出的检测器改写工作流里的 <code className="font-mono">bbox/</code>、<code className="font-mono">segm/</code> 路径，人体分割兜底在没有同名模型可选时退化为「不兜底」（按插值处理），不会再卡在校验失败。
                             </p>
                         </div>
 
