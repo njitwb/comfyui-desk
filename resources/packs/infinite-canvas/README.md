@@ -5,8 +5,8 @@
 ## 组件
 - image: 图像基础（T2I / I2I / 局部编辑）
 - text: 文本生成 / 反推
-- video-omni: 全能参考视频（6 规格）
-- video-frame: 首尾帧视频（6 规格）
+- video-omni: 全能参考视频（5 规格）
+- video-frame: 首尾帧视频（5 规格）
 - audio: MiniMax Music 03
 - face-refine: H3 人脸精修
 - depth: ReShot 深度视频

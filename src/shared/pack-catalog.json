@@ -42,6 +42,11 @@
       "url": "https://github.com/maosika-ai/ComfyUI-ReShot.git",
       "commit": "3575e39e463cc41588e3f1ef3daa3e15c768d78e",
       "required": true
+    },
+    "comfyui-SelfLift": {
+      "url": "https://github.com/facok/comfyui-SelfLift.git",
+      "commit": "835c3cf7919410f71f414688f049c6ca497789d0",
+      "required": true
     }
   },
   "bundledNodes": {
@@ -597,6 +602,66 @@
           "revision": "main"
         }
       ]
+    },
+    "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors": {
+      "category": "diffusion_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "WarmBloodAban/Minimax-h3_Singularity",
+          "file": "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "Minimax-h3_Singularity_ref2va_v1.3_int8"
+        },
+        {
+          "type": "manual"
+        }
+      ],
+      "size": 34004507622
+    },
+    "H3-Licon-VBVR-I2V.safetensors": {
+      "category": "loras",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "LiconStudio/Minimax-H3-VBVR",
+          "file": "H3-Licon-VBVR-I2V.safetensors",
+          "revision": "main"
+        },
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "H3-Licon-VBVR-I2V"
+        },
+        {
+          "type": "manual"
+        }
+      ],
+      "size": 149238584
+    },
+    "minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth": {
+      "category": "latent_upscale_models",
+      "sources": [
+        {
+          "type": "hf",
+          "repo": "LBH-123-AI/Minimax_h3_latent_Upscaler",
+          "file": "minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
+          "revision": "main"
+        },
+        {
+          "type": "search",
+          "source": "hf",
+          "query": "minimax_h3_latent_upscaler_3d_conv_v1_fp32"
+        },
+        {
+          "type": "manual"
+        }
+      ],
+      "size": 1381251539
     }
   },
   "coreNodes": [
@@ -683,6 +748,7 @@
     "SAMLoader": "ComfyUI-Impact-Pack",
     "CLIPLoaderGGUF": "ComfyUI-GGUF",
     "UnetLoaderGGUF": "ComfyUI-GGUF",
-    "ReShotDepthVideo": "ComfyUI-ReShot"
+    "ReShotDepthVideo": "ComfyUI-ReShot",
+    "SelfLiftH3Sampler": "comfyui-SelfLift"
   }
 }

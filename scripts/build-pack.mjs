@@ -28,7 +28,9 @@ const MODEL_CATEGORY = {
   vae_name: 'vae',
   clip_name: 'text_encoders',
   lora_name: 'loras',
-  control_net_name: 'controlnet'
+  control_net_name: 'controlnet',
+  // SelfLift 渐进式超分采样器的权重目录（见 facok/comfyui-SelfLift）
+  upscaler_model: 'latent_upscale_models'
 }
 
 const COMPONENTS = [
@@ -56,16 +58,15 @@ const COMPONENTS = [
   },
   {
     id: 'video-omni',
-    name: '全能参考视频（6 规格）',
-    description: 'MiniMax H3 全能参考：FP8/INT8/BF16 × 20步/4步PDMD/6步Pika/8步Turbo',
+    name: '全能参考视频（5 规格）',
+    description: 'MiniMax H3 全能参考：FP8 20步/4步PDMD + INT8 4步PDMD/6步Pika/6步SelfLift',
     defaultSelected: true,
     api: [
       'video_minimax_h3_omni_fp8_20step_api.json',
       'video_minimax_h3_omni_fp8_4step_pdmd_api.json',
       'video_minimax_h3_omni_int8_4step_pdmd_api.json',
       'video_minimax_h3_omni_int8_6step_pika_api.json',
-      'video_minimax_h3_omni_bf16_20step_api.json',
-      'video_minimax_h3_omni_bf16_8step_turbo_api.json'
+      'video_minimax_h3_omni_int8_6step_selflift_api.json'
     ],
     ui: [
       'minimax_h3_ref2v_4step_pdmd_workflow.json',
@@ -73,20 +74,21 @@ const COMPONENTS = [
       'minimax_h3_ref2v_workflow.json',
       'minimax_h3_ref2va_workflow.json',
       'minimax_H3_i2v&t2v_workflow.json'
-    ]
+    ],
+    // 这几个 UI 调试工作流用了 KJNodes 的 SetNode 做参数中转，API 工作流里看不出来
+    extraNodes: ['ComfyUI-KJNodes']
   },
   {
     id: 'video-frame',
-    name: '首尾帧视频（6 规格）',
-    description: 'MiniMax H3 首尾帧插值：FP8/INT8/BF16 × 20步/4步PDMD/6步Pika/8步Turbo',
+    name: '首尾帧视频（5 规格）',
+    description: 'MiniMax H3 首尾帧插值：FP8 20步/4步PDMD + INT8 4步PDMD/6步Pika/6步SelfLift',
     defaultSelected: true,
     api: [
       'video_minimax_h3_frame_fp8_20step_api.json',
       'video_minimax_h3_frame_fp8_4step_pdmd_api.json',
       'video_minimax_h3_frame_int8_4step_pdmd_api.json',
       'video_minimax_h3_frame_int8_6step_pika_api.json',
-      'video_minimax_h3_frame_bf16_20step_api.json',
-      'video_minimax_h3_frame_bf16_8step_turbo_api.json'
+      'video_minimax_h3_frame_int8_6step_selflift_api.json'
     ],
     ui: [
       'minimax_h3_fl2va_fp8_4step_pdmd_workflow.json',
@@ -328,6 +330,9 @@ function main() {
       if (!modelMap.has(key)) modelMap.set(key, { filename: m.filename, category: m.category })
     }
 
+    // UI 工作流专用节点（API 工作流里用不到）显式补进组件
+    for (const key of def.extraNodes || []) nodeKeys.set(key, true)
+
     // 节点条目
     let blockedReason
     const nodes = []
@@ -370,7 +375,7 @@ function main() {
       const sources = resolveSources(filename, category)
       if (!hasCloud(sources)) coverage.noLink.add(filename)
       if (sources.every(s => s.type === 'manual')) coverage.manualModels.add(filename)
-      const size = findLocalModel(filename)
+      const size = findLocalModel(filename) || catalog.models[filename]?.size || 0
       models.push({ filename, category, ...(size ? { size } : {}), sources })
       totalDownload += size
     }

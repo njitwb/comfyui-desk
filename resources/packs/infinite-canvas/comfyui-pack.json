@@ -3,7 +3,7 @@
   "id": "infinite-canvas",
   "name": "无限画布 · 全能力整合包",
   "version": "1.0.0",
-  "createdAt": "2026-11-10T05:37:35.140Z",
+  "createdAt": "2026-11-16T13:45:04.901Z",
   "author": "ComfyUI Desk",
   "description": "无限画布内置 8 大能力矩阵的一键还原包：工作流、自定义节点、Python 依赖与模型清单。大模型走云端下载，只有无法下载的小文件才随包分发。",
   "requirements": {
@@ -459,8 +459,8 @@
     },
     {
       "id": "video-omni",
-      "name": "全能参考视频（6 规格）",
-      "description": "MiniMax H3 全能参考：FP8/INT8/BF16 × 20步/4步PDMD/6步Pika/8步Turbo",
+      "name": "全能参考视频（5 规格）",
+      "description": "MiniMax H3 全能参考：FP8 20步/4步PDMD + INT8 4步PDMD/6步Pika/6步SelfLift",
       "defaultSelected": true,
       "nodes": [
         {
@@ -470,6 +470,17 @@
             "type": "git",
             "url": "https://github.com/M1kep/ComfyLiterals.git",
             "commit": "bdddb08ca82d90d75d97b1d437a652e0284a32ac"
+          },
+          "requirements": true,
+          "installPy": true
+        },
+        {
+          "key": "comfyui-SelfLift",
+          "name": "comfyui-SelfLift",
+          "source": {
+            "type": "git",
+            "url": "https://github.com/facok/comfyui-SelfLift.git",
+            "commit": "835c3cf7919410f71f414688f049c6ca497789d0"
           },
           "requirements": true,
           "installPy": true
@@ -646,19 +657,20 @@
           ]
         },
         {
-          "filename": "minimax_h3_ref2va_bf16.safetensors",
+          "filename": "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
           "category": "diffusion_models",
+          "size": 34004507622,
           "sources": [
             {
               "type": "hf",
-              "repo": "Comfy-Org/MiniMax-H3",
-              "file": "diffusion_models/minimax_h3_ref2va_bf16.safetensors",
+              "repo": "WarmBloodAban/Minimax-h3_Singularity",
+              "file": "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
               "revision": "main"
             },
             {
               "type": "search",
               "source": "hf",
-              "query": "minimax_h3_ref2va_bf16"
+              "query": "Minimax-h3_Singularity_ref2va_v1.3_int8"
             },
             {
               "type": "manual"
@@ -666,19 +678,26 @@
           ]
         },
         {
-          "filename": "qwen3vl_32b_minimax_h3_bf16.safetensors",
-          "category": "text_encoders",
+          "filename": "minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
+          "category": "latent_upscale_models",
+          "size": 1381251539,
           "sources": [
             {
               "type": "hf",
+              "repo": "LBH-123-AI/Minimax_h3_latent_Upscaler",
+              "file": "minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
               "repo": "Comfy-Org/MiniMax-H3",
-              "file": "text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors",
+              "file": "latent_upscale_models/minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
               "revision": "main"
             },
             {
               "type": "search",
               "source": "hf",
-              "query": "qwen3vl_32b_minimax_h3_bf16"
+              "query": "minimax_h3_latent_upscaler_3d_conv_v1_fp32"
             },
             {
               "type": "manual"
@@ -686,26 +705,20 @@
           ]
         },
         {
-          "filename": "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+          "filename": "H3-Licon-VBVR-I2V.safetensors",
           "category": "loras",
-          "size": 306731560,
+          "size": 149238584,
           "sources": [
             {
               "type": "hf",
-              "repo": "Kijai/MiniMax-H3_comfy",
-              "file": "loras/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
-              "revision": "main"
-            },
-            {
-              "type": "hf",
-              "repo": "Comfy-Org/MiniMax-H3",
-              "file": "loras/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+              "repo": "LiconStudio/Minimax-H3-VBVR",
+              "file": "H3-Licon-VBVR-I2V.safetensors",
               "revision": "main"
             },
             {
               "type": "search",
               "source": "hf",
-              "query": "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16"
+              "query": "H3-Licon-VBVR-I2V"
             },
             {
               "type": "manual"
@@ -743,8 +756,8 @@
     },
     {
       "id": "video-frame",
-      "name": "首尾帧视频（6 规格）",
-      "description": "MiniMax H3 首尾帧插值：FP8/INT8/BF16 × 20步/4步PDMD/6步Pika/8步Turbo",
+      "name": "首尾帧视频（5 规格）",
+      "description": "MiniMax H3 首尾帧插值：FP8 20步/4步PDMD + INT8 4步PDMD/6步Pika/6步SelfLift",
       "defaultSelected": true,
       "nodes": [
         {
@@ -759,11 +772,12 @@
           "installPy": true
         },
         {
-          "key": "ComfyUI-KJNodes",
-          "name": "ComfyUI-KJNodes",
+          "key": "comfyui-SelfLift",
+          "name": "comfyui-SelfLift",
           "source": {
             "type": "git",
-            "url": "https://github.com/kijai/ComfyUI-KJNodes.git"
+            "url": "https://github.com/facok/comfyui-SelfLift.git",
+            "commit": "835c3cf7919410f71f414688f049c6ca497789d0"
           },
           "requirements": true,
           "installPy": true
@@ -930,39 +944,20 @@
           ]
         },
         {
-          "filename": "qwen3vl_32b_minimax_h3_bf16.safetensors",
-          "category": "text_encoders",
-          "sources": [
-            {
-              "type": "hf",
-              "repo": "Comfy-Org/MiniMax-H3",
-              "file": "text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors",
-              "revision": "main"
-            },
-            {
-              "type": "search",
-              "source": "hf",
-              "query": "qwen3vl_32b_minimax_h3_bf16"
-            },
-            {
-              "type": "manual"
-            }
-          ]
-        },
-        {
-          "filename": "minimax_h3_fl2va_bf16.safetensors",
+          "filename": "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
           "category": "diffusion_models",
+          "size": 34004507622,
           "sources": [
             {
               "type": "hf",
-              "repo": "Comfy-Org/MiniMax-H3",
-              "file": "diffusion_models/minimax_h3_fl2va_bf16.safetensors",
+              "repo": "WarmBloodAban/Minimax-h3_Singularity",
+              "file": "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
               "revision": "main"
             },
             {
               "type": "search",
               "source": "hf",
-              "query": "minimax_h3_fl2va_bf16"
+              "query": "Minimax-h3_Singularity_ref2va_v1.3_int8"
             },
             {
               "type": "manual"
@@ -970,20 +965,47 @@
           ]
         },
         {
-          "filename": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
-          "category": "loras",
-          "size": 1956193000,
+          "filename": "minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
+          "category": "latent_upscale_models",
+          "size": 1381251539,
           "sources": [
             {
               "type": "hf",
+              "repo": "LBH-123-AI/Minimax_h3_latent_Upscaler",
+              "file": "minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
+              "revision": "main"
+            },
+            {
+              "type": "hf",
               "repo": "Comfy-Org/MiniMax-H3",
-              "file": "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+              "file": "latent_upscale_models/minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
               "revision": "main"
             },
             {
               "type": "search",
               "source": "hf",
-              "query": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16"
+              "query": "minimax_h3_latent_upscaler_3d_conv_v1_fp32"
+            },
+            {
+              "type": "manual"
+            }
+          ]
+        },
+        {
+          "filename": "H3-Licon-VBVR-I2V.safetensors",
+          "category": "loras",
+          "size": 149238584,
+          "sources": [
+            {
+              "type": "hf",
+              "repo": "LiconStudio/Minimax-H3-VBVR",
+              "file": "H3-Licon-VBVR-I2V.safetensors",
+              "revision": "main"
+            },
+            {
+              "type": "search",
+              "source": "hf",
+              "query": "H3-Licon-VBVR-I2V"
             },
             {
               "type": "manual"
