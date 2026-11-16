@@ -27,6 +27,7 @@ export default {
         "view": "查看",
         "download": "下载",
         "upload": "上传",
+        "close": "关闭",
         "requestCanceled": "请求已取消",
         "durationMinutes": "{{minutes}}分{{seconds}}秒",
         "durationSeconds": "{{seconds}}秒",
@@ -250,6 +251,8 @@ export default {
         "empty": "没有找到资产",
         "manual": "手动添加",
         "selectImage": "请选择图片文件",
+        "selectAudio": "请选择音频文件",
+        "selectVideo": "请选择视频文件",
         "updated": "资产已更新",
         "saved": "资产已保存",
         "textCopied": "文本已复制",
@@ -261,7 +264,8 @@ export default {
         "kinds": {
             "text": "文本",
             "image": "图片",
-            "video": "视频"
+            "video": "视频",
+            "audio": "音频"
         },
         "fields": {
             "title": "标题",
@@ -278,12 +282,19 @@ export default {
             "textContent": "文本内容",
             "textRequired": "请输入文本内容",
             "textPlaceholder": "保存提示词、说明文案、参考描述等文本资产",
-            "imageContent": "图片内容"
+            "imageContent": "图片内容",
+            "videoContent": "视频内容",
+            "audioContent": "音频内容"
         },
         "selectImageFile": "选择图片文件",
         "noImageSelected": "未选择图片",
+        "selectAudioFile": "选择音频文件",
+        "noAudioSelected": "未选择音频",
+        "selectVideoFile": "选择视频文件",
+        "noVideoSelected": "未选择视频",
         "preview": "预览",
         "noCover": "暂无封面",
+        "characterCount": "{{count}} 字",
         "untitled": "未命名资产",
         "noTags": "无标签",
         "untagged": "未打标签",
@@ -293,7 +304,8 @@ export default {
         "deleteConfirm": "确定删除「{{name}}」吗？删除后会从我的资产中移除。",
         "copyText": "复制文本",
         "downloadImage": "下载图片",
-        "downloadVideo": "下载视频"
+        "downloadVideo": "下载视频",
+        "downloadAudio": "下载音频"
     },
     "notFound": {
         "title": "页面不存在",
@@ -2133,6 +2145,10 @@ export default {
         "resetDefaultSuccess": "已恢复为系统内置版本「{{name}}」",
         "saveSuccess": "已保存「{{name}}」，全渠道与画布生成已实时生效！",
         "saveChanges": "保存修改（全渠道生效）",
+        "stepConfigTitle": "采样步数可视化配置 (step)",
+        "stepConfigDesc": "修改后点击右上角「保存修改」即可作为该工作流的出厂基准步数，全渠道与画布即刻生效。",
+        "stepLabel": "采样步数 (steps)",
+        "stepPlaceholder": "输入采样步数整数",
         "modelConfigTitle": "大模型与文本编码器可视化配置",
         "detectedSlots": "检测到 {{count}} 个模型选择槽位",
         "noSlots": "当前工作流未标注 select_models_* 选择槽位",

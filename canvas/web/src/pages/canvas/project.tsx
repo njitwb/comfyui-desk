@@ -19,7 +19,7 @@ import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
-import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
+import { CANVAS_NODE_MAX_BOUND, fitNodeSize, isAspectRatioClose, nodeSizeFromRatio, resolveSkeletonDimensions } from "@/lib/canvas/canvas-node-size";
 import { captureVideoFrame, type VideoFramePosition } from "@/lib/canvas/canvas-video-frame";
 import { extractAudioFromVideo } from "@/lib/canvas/canvas-video-audio";
 import { App, Button, Modal } from "antd";
@@ -79,6 +79,7 @@ import {
     buildGeneratedNodeConnections,
     buildGenerationConfig,
     buildPastedNodeConnections,
+    calculateBranchNodePosition,
     duplicateIncomingConnections,
     generateNextSeed,
     generationReferenceUrls,
@@ -245,6 +246,10 @@ function InfiniteCanvasPage() {
         startY: 0,
         initialSelectedNodes: [],
     });
+    const pendingDragMoveRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null);
+    const lastInvalidConnectionIdsRef = useRef<Set<string> | null>(null);
+    const cachedConfigInputsRef = useRef<Map<string, NodeGenerationInput[]> | null>(null);
+    const cachedMentionReferencesRef = useRef<Map<string, ReturnType<typeof buildNodeMentionReferences>> | null>(null);
 
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
@@ -679,12 +684,35 @@ function InfiniteCanvasPage() {
 
     const createConnectedNode = useCallback(
         (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video | CanvasNodeType.Audio, pending: PendingConnectionCreate) => {
-            const metadata = createDefaultNodeMetadata(type, effectiveConfig);
+            const baseMetadata = createDefaultNodeMetadata(type, effectiveConfig) || {};
+            const sourceIds = pending.sourceNodeIds && pending.sourceNodeIds.length > 0 ? pending.sourceNodeIds : [pending.connection.nodeId];
+            const primarySource = sourceIds.map((id) => nodesRef.current.find((n) => n.id === id)).find((n): n is CanvasNodeData => Boolean(n));
+            const sourceMetadata = primarySource?.metadata;
+
+            const inheritedSize = sourceMetadata?.size;
+            const inheritedRefWidth = primarySource?.type === CanvasNodeType.Image ? (sourceMetadata?.naturalWidth || primarySource.width) : undefined;
+            const inheritedRefHeight = primarySource?.type === CanvasNodeType.Image ? (sourceMetadata?.naturalHeight || primarySource.height) : undefined;
+
+            const metadata: CanvasNodeMetadata = {
+                ...baseMetadata,
+                ...(inheritedSize ? { size: inheritedSize } : {}),
+                ...(inheritedRefWidth ? { naturalWidth: inheritedRefWidth, naturalHeight: inheritedRefHeight } : {}),
+                ...(primarySource?.type === CanvasNodeType.Config ? {
+                    ...(sourceMetadata?.channelId ? { channelId: sourceMetadata.channelId } : {}),
+                    ...(sourceMetadata?.workflowId ? { workflowId: sourceMetadata.workflowId } : {}),
+                    ...(sourceMetadata?.modelId ? { modelId: sourceMetadata.modelId } : {}),
+                    ...(sourceMetadata?.model ? { model: sourceMetadata.model } : {}),
+                } : {}),
+            };
+
             const title = generateNextNodeTitle(type, nodesRef.current);
             const newNode = createCanvasNode(type, pending.position, metadata, title);
+            if (type === CanvasNodeType.Image && !newNode.metadata?.content) {
+                delete newNode.metadata?.naturalWidth;
+                delete newNode.metadata?.naturalHeight;
+            }
             const allNodes = [...nodesRef.current, newNode];
 
-            const sourceIds = pending.sourceNodeIds && pending.sourceNodeIds.length > 0 ? pending.sourceNodeIds : [pending.connection.nodeId];
             const newConnections: CanvasConnection[] = [];
             let currentConnections = connectionsRef.current;
 
@@ -791,9 +819,8 @@ function InfiniteCanvasPage() {
 
     const visibleNodes = useMemo(() => {
         const padding = 280;
-        const rect = containerRef.current?.getBoundingClientRect();
-        const width = rect?.width || size.width;
-        const height = rect?.height || size.height;
+        const width = size.width;
+        const height = size.height;
         const viewLeft = -viewport.x / viewport.k - padding;
         const viewTop = -viewport.y / viewport.k - padding;
         const viewRight = viewLeft + width / viewport.k + padding * 2;
@@ -803,7 +830,14 @@ function InfiniteCanvasPage() {
     }, [nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
 
     const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-    const invalidConnectionIds = useMemo(() => getAllInvalidConnectionIds(nodes, connections), [nodes, connections]);
+    const invalidConnectionIds = useMemo(() => {
+        if (isNodeDragging && lastInvalidConnectionIdsRef.current !== null) {
+            return lastInvalidConnectionIdsRef.current;
+        }
+        const result = getAllInvalidConnectionIds(nodes, connections);
+        lastInvalidConnectionIdsRef.current = result;
+        return result;
+    }, [connections, isNodeDragging, nodes]);
     // The toolbar follows a single selected node selected by click, creation, marquee, or keyboard.
     // It stays hidden for multi-selection and while isNodeDragging is true.
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
@@ -849,18 +883,26 @@ function InfiniteCanvasPage() {
     }, [activeNodeId, connections, nodeById, nodes]);
 
     const configInputsById = useMemo(() => {
+        if (isNodeDragging && cachedConfigInputsRef.current !== null) {
+            return cachedConfigInputsRef.current;
+        }
         const map = new Map<string, NodeGenerationInput[]>();
         nodes.forEach((node) => {
             if (node.type !== CanvasNodeType.Config) return;
             map.set(node.id, buildNodeGenerationInputs(node.id, nodes, connections));
         });
+        cachedConfigInputsRef.current = map;
         return map;
-    }, [connections, nodes]);
+    }, [connections, isNodeDragging, nodes]);
     const mentionReferencesByNodeId = useMemo(() => {
+        if (isNodeDragging && cachedMentionReferencesRef.current !== null) {
+            return cachedMentionReferencesRef.current;
+        }
         const map = new Map<string, ReturnType<typeof buildNodeMentionReferences>>();
         nodes.forEach((node) => map.set(node.id, buildNodeMentionReferences(node, nodes, connections)));
+        cachedMentionReferencesRef.current = map;
         return map;
-    }, [connections, nodes]);
+    }, [connections, isNodeDragging, nodes]);
     const connectedNodesByNodeId = useMemo(() => {
         const map = new Map<string, CanvasNodeData[]>();
         connections.filter((connection) => connection.kind === "input").forEach((connection) => {
@@ -1664,6 +1706,10 @@ function InfiniteCanvasPage() {
         dragRef.current.initialSelectedNodes = [];
         dragRef.current.snappedDx = undefined;
         dragRef.current.snappedDy = undefined;
+        pendingDragMoveRef.current = null;
+        lastInvalidConnectionIdsRef.current = null;
+        cachedConfigInputsRef.current = null;
+        cachedMentionReferencesRef.current = null;
         if (wasClick && clickedNodeId) {
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
             const clickedDefinition = clickedNode ? getNodeDefinition(clickedNode.type) : undefined;
@@ -1681,44 +1727,48 @@ function InfiniteCanvasPage() {
             const currentViewport = viewportRef.current;
 
             if (dragRef.current.isDraggingNode) {
-                const rawDx = (event.clientX - dragRef.current.startX) / currentViewport.k;
-                const rawDy = (event.clientY - dragRef.current.startY) / currentViewport.k;
-                const initialPositions = dragRef.current.initialSelectedNodes;
-                if (Math.abs(event.clientX - dragRef.current.startX) > 3 || Math.abs(event.clientY - dragRef.current.startY) > 3) {
-                    dragRef.current.hasMoved = true;
-                }
-
-                const snapResult = calculateAlignmentSnap({
-                    initialNodes: initialPositions,
-                    rawDx,
-                    rawDy,
-                    allNodes: nodesRef.current,
-                    viewportScale: currentViewport.k,
-                    disabled: event.altKey,
-                });
-
-                const dx = snapResult.snappedDx;
-                const dy = snapResult.snappedDy;
-                dragRef.current.snappedDx = dx;
-                dragRef.current.snappedDy = dy;
-                setAlignmentGuides(snapResult.guides);
-
-                const movedIds = new Set(initialPositions.map((item) => item.id));
-                const previewNodes = nodesRef.current.map((node) => {
-                    const initial = initialPositions.find((item) => item.id === node.id);
-                    return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
-                });
-                setDropTargetGroupId(findGroupDropTarget(movedIds, previewNodes)?.id || null);
-
-                if (rafRef.current) cancelAnimationFrame(rafRef.current);
+                pendingDragMoveRef.current = { clientX: event.clientX, clientY: event.clientY, altKey: event.altKey };
+                if (rafRef.current) return;
                 rafRef.current = requestAnimationFrame(() => {
+                    rafRef.current = null;
+                    const pending = pendingDragMoveRef.current;
+                    if (!pending || !dragRef.current.isDraggingNode) return;
+
+                    const rawDx = (pending.clientX - dragRef.current.startX) / currentViewport.k;
+                    const rawDy = (pending.clientY - dragRef.current.startY) / currentViewport.k;
+                    const initialPositions = dragRef.current.initialSelectedNodes;
+                    if (Math.abs(pending.clientX - dragRef.current.startX) > 3 || Math.abs(pending.clientY - dragRef.current.startY) > 3) {
+                        dragRef.current.hasMoved = true;
+                    }
+
+                    const snapResult = calculateAlignmentSnap({
+                        initialNodes: initialPositions,
+                        rawDx,
+                        rawDy,
+                        allNodes: nodesRef.current,
+                        viewportScale: currentViewport.k,
+                        disabled: pending.altKey,
+                    });
+
+                    const dx = snapResult.snappedDx;
+                    const dy = snapResult.snappedDy;
+                    dragRef.current.snappedDx = dx;
+                    dragRef.current.snappedDy = dy;
+                    setAlignmentGuides(snapResult.guides);
+
+                    const movedIds = new Set(initialPositions.map((item) => item.id));
+                    const previewNodes = nodesRef.current.map((node) => {
+                        const initial = initialPositions.find((item) => item.id === node.id);
+                        return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
+                    });
+                    setDropTargetGroupId(findGroupDropTarget(movedIds, previewNodes)?.id || null);
+
                     setNodes((prev) =>
                         prev.map((node) => {
                             const initial = initialPositions.find((item) => item.id === node.id);
                             return initial ? { ...node, position: { x: initial.x + dx, y: initial.y + dy } } : node;
                         }),
                     );
-                    rafRef.current = null;
                 });
                 return;
             }
@@ -2129,12 +2179,18 @@ function InfiniteCanvasPage() {
                 }
                 const image = node.metadata?.images?.find((item) => item.id === itemId);
                 if (!image?.content) return node;
-                const edge = Math.max(node.width, node.height);
-                const size = node.metadata?.freeResize ? { width: node.width, height: node.height } : fitNodeSize(image.naturalWidth, image.naturalHeight, edge, edge);
+                const shouldLockFrame = Boolean(
+                    node.metadata?.freeResize ||
+                    isAspectRatioClose(node.width, node.height, image.naturalWidth, image.naturalHeight)
+                );
+                const edge = Math.max(node.width, node.height, CANVAS_NODE_MAX_BOUND);
+                const size = shouldLockFrame ? { width: node.width, height: node.height } : fitNodeSize(image.naturalWidth, image.naturalHeight, edge, edge);
                 return {
                     ...node,
-                    position: { x: node.position.x + node.width / 2 - size.width / 2, y: node.position.y + node.height / 2 - size.height / 2 },
-                    ...size,
+                    ...(shouldLockFrame ? {} : {
+                        position: { x: node.position.x + node.width / 2 - size.width / 2, y: node.position.y + node.height / 2 - size.height / 2 },
+                        ...size,
+                    }),
                     metadata: {
                         ...node.metadata,
                         content: image.content,
@@ -2714,15 +2770,16 @@ function InfiniteCanvasPage() {
         if (!node.metadata?.content) return;
         const cropped = await cropDataUrl(node.metadata.content, crop);
         const image = await uploadImage(cropped);
-        const width = Math.min(node.width, Math.max(220, image.width));
+        const parentEdge = Math.max(node.width, node.height, CANVAS_NODE_MAX_BOUND);
+        const size = fitNodeSize(image.width, image.height, parentEdge, parentEdge);
         const childId = nanoid();
         const child: CanvasNodeData = {
             id: childId,
             type: CanvasNodeType.Image,
             title: generateNextNodeTitle(CanvasNodeType.Image, nodesRef.current),
             position: { x: node.position.x + node.width + 96, y: node.position.y },
-            width,
-            height: width * (image.height / image.width),
+            width: size.width,
+            height: size.height,
             metadata: {
                 ...imageMetadata(image),
                 prompt: node.metadata?.prompt,
@@ -2850,7 +2907,8 @@ function InfiniteCanvasPage() {
         setUpscaleNodeId(null);
         const upscaled = await upscaleDataUrl(node.metadata.content, params);
         const image = await uploadImage(upscaled);
-        const size = fitNodeSize(image.width, image.height);
+        const parentEdge = Math.max(node.width, node.height, CANVAS_NODE_MAX_BOUND);
+        const size = fitNodeSize(image.width, image.height, parentEdge, parentEdge);
         const childId = nanoid();
         const child: CanvasNodeData = {
             id: childId,
@@ -3276,20 +3334,39 @@ function InfiniteCanvasPage() {
                     const rootId = isEmptyImageNode ? nodeId : nanoid();
                     const imageIds = Array.from({ length: count }, () => nanoid());
                     pendingChildIds = [rootId];
+                    const targetNode = isEmptyImageNode ? sourceNode : undefined;
+                    const targetSize = generationConfig.size || sourceNode?.metadata?.size;
+                    const firstRef = referenceImages[0];
+                    const refNode = firstRef ? nodesRef.current.find((n) => n.id === firstRef.id) : undefined;
+                    const referenceWidth = firstRef?.width || refNode?.metadata?.naturalWidth || refNode?.width;
+                    const referenceHeight = firstRef?.height || refNode?.metadata?.naturalHeight || refNode?.height;
+                    const rootDimensions = resolveSkeletonDimensions({
+                        targetSize,
+                        referenceWidth,
+                        referenceHeight,
+                        userWidth: targetNode?.width,
+                        userHeight: targetNode?.height,
+                        freeResize: targetNode?.metadata?.freeResize,
+                        baseMaxBound: imageConfig.width,
+                    });
+                    const rootPosition = isEmptyImageNode && sourceNode
+                        ? {
+                              x: sourceNode.position.x + sourceNode.width / 2 - rootDimensions.width / 2,
+                              y: sourceNode.position.y + sourceNode.height / 2 - rootDimensions.height / 2,
+                          }
+                        : calculateBranchNodePosition(sourceNode, rootDimensions, nodesRef.current);
                     const rootNode: CanvasNodeData = {
                         id: rootId,
                         type: CanvasNodeType.Image,
-                        title: isRepeat && sourceNode?.title ? sourceNode.title : (isEmptyImageNode ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Image, nodesRef.current)),
-                        position: {
-                            x: isEmptyImageNode ? parentPosition.x : parentPosition.x + (sourceNode?.width || parentConfig.width) + 96,
-                            y: isEmptyImageNode ? parentPosition.y : isRepeat ? parentPosition.y : parentPosition.y + parentConfig.height / 2 - imageConfig.height / 2,
-                        },
-                        width: isEmptyImageNode ? sourceNode?.width || imageConfig.width : (isRepeat && sourceNode?.width ? sourceNode.width : imageConfig.width),
-                        height: isEmptyImageNode ? sourceNode?.height || imageConfig.height : (isRepeat && sourceNode?.height ? sourceNode.height : imageConfig.height),
+                        title: isEmptyImageNode && sourceNode?.title ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Image, nodesRef.current),
+                        position: rootPosition,
+                        width: rootDimensions.width,
+                        height: rootDimensions.height,
                         metadata: {
                             ...(isRepeat && sourceNode?.metadata ? cloneNodeMetadata(sourceNode.metadata, sourceNode.type) : {}),
                             prompt,
                             effectivePrompt,
+                            size: targetSize,
                             composerContent: undefined,
                             channelId: sourceNode?.metadata?.channelId,
                             workflowId: sourceNode?.metadata?.workflowId,
@@ -3350,9 +3427,9 @@ function InfiniteCanvasPage() {
                         connectionsRef.current = [...connectionsRef.current, ...nextConnections];
                         setConnections((prev) => [...prev, ...nextConnections]);
                     }
-                    setSelectedNodeIds(new Set([nodeId]));
+                    setSelectedNodeIds(new Set([rootId]));
                     setSelectedConnectionId(null);
-                    setDialogNodeId(nodeId);
+                    setDialogNodeId(rootId);
 
                     const controller = isRepeat
                         ? startGenerationRequest(rootId, nodeId, rootId, runController)
@@ -3381,7 +3458,6 @@ function InfiniteCanvasPage() {
                                           onProgress: handleBatchProgress,
                                       }).then((items) => items[0]);
                                 const uploaded = await uploadImage(image.dataUrl);
-                                const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                                 const item: CanvasNodeImage = {
                                     id: imageId,
                                     status: NODE_STATUS_SUCCESS,
@@ -3399,10 +3475,21 @@ function InfiniteCanvasPage() {
                                         const images = node.metadata?.images?.map((image) => (image.id === imageId ? item : image)) || [];
                                         const hasActivePrimary = Boolean(node.metadata?.primaryImageId && images.some((image) => image.id === node.metadata?.primaryImageId && Boolean(image.content)));
                                         if (hasActivePrimary) return { ...node, metadata: { ...node.metadata, images } };
+                                        const shouldLockFrame = Boolean(
+                                            node.metadata?.freeResize ||
+                                            isAspectRatioClose(node.width, node.height, uploaded.width, uploaded.height)
+                                        );
+                                        const maxEdge = Math.max(node.width, node.height, CANVAS_NODE_MAX_BOUND);
+                                        const imageSize = shouldLockFrame
+                                            ? { width: node.width, height: node.height }
+                                             : fitNodeSize(uploaded.width, uploaded.height, maxEdge, maxEdge);
                                         const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
+                                        const position = shouldLockFrame
+                                            ? node.position
+                                            : { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 };
                                         return {
                                             ...node,
-                                            position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
+                                            position,
                                             ...imageSize,
                                             metadata: {
                                                 ...node.metadata,
@@ -3480,17 +3567,39 @@ function InfiniteCanvasPage() {
                 }
 
                 if (mode === "video") {
-                    const spec = nodeSizeFromRatio(generationConfig.size, NODE_DEFAULT_SIZE[CanvasNodeType.Video].width, NODE_DEFAULT_SIZE[CanvasNodeType.Video].height) || NODE_DEFAULT_SIZE[CanvasNodeType.Video];
                     const isEmptyVideoNode = sourceNode?.type === CanvasNodeType.Video && !sourceNode.metadata?.content;
                     const videoId = isEmptyVideoNode ? nodeId : nanoid();
                     const parent = sourceNode?.position || { x: 0, y: 0 };
+                    const targetVideoNode = isEmptyVideoNode ? sourceNode : undefined;
+                    const videoConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
+                    const firstRef = generationContext.referenceImages[0];
+                    const refNode = firstRef ? nodesRef.current.find((n) => n.id === firstRef.id) : undefined;
+                    const referenceWidth = firstRef?.width || refNode?.metadata?.naturalWidth || refNode?.width;
+                    const referenceHeight = firstRef?.height || refNode?.metadata?.naturalHeight || refNode?.height;
+                    const videoTargetSize = generationConfig.size || sourceNode?.metadata?.size;
+                    const videoDimensions = resolveSkeletonDimensions({
+                        targetSize: videoTargetSize,
+                        referenceWidth,
+                        referenceHeight,
+                        userWidth: targetVideoNode?.width,
+                        userHeight: targetVideoNode?.height,
+                        freeResize: targetVideoNode?.metadata?.freeResize,
+                        baseMaxBound: videoConfig.width,
+                        defaultRatio: "16:9",
+                    });
+                    const videoPosition = isEmptyVideoNode && sourceNode
+                        ? {
+                              x: sourceNode.position.x + sourceNode.width / 2 - videoDimensions.width / 2,
+                              y: sourceNode.position.y + sourceNode.height / 2 - videoDimensions.height / 2,
+                          }
+                        : calculateBranchNodePosition(sourceNode, videoDimensions, nodesRef.current);
                     const videoNode: CanvasNodeData = {
                         id: videoId,
                         type: CanvasNodeType.Video,
-                        title: isRepeat && sourceNode?.title ? sourceNode.title : (isEmptyVideoNode ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Video, nodesRef.current)),
-                        position: isEmptyVideoNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
-                        width: isEmptyVideoNode ? sourceNode.width : (isRepeat && sourceNode?.width ? sourceNode.width : spec.width),
-                        height: isEmptyVideoNode ? sourceNode.height : (isRepeat && sourceNode?.height ? sourceNode.height : spec.height),
+                        title: isEmptyVideoNode && sourceNode?.title ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Video, nodesRef.current),
+                        position: videoPosition,
+                        width: videoDimensions.width,
+                        height: videoDimensions.height,
                         metadata: {
                             ...(isRepeat && sourceNode?.metadata ? cloneNodeMetadata(sourceNode.metadata, sourceNode.type) : {}),
                             prompt,
@@ -3502,7 +3611,7 @@ function InfiniteCanvasPage() {
                             model: videoTool ? undefined : generationConfig.model,
                             modelId: videoTool ? undefined : sourceNode?.metadata?.modelId,
                             supportedTools: videoTool ? sourceNode?.metadata?.supportedTools : undefined,
-                            size: generationConfig.size,
+                            size: videoTargetSize,
                             seconds: generationConfig.videoSeconds,
                             videoMode: generationConfig.videoMode,
                             vquality: generationConfig.vquality,
@@ -3535,6 +3644,9 @@ function InfiniteCanvasPage() {
                         connectionsRef.current = [...connectionsRef.current, ...nextConnections];
                         setConnections((prev) => [...prev, ...nextConnections]);
                     }
+                    setSelectedNodeIds(new Set([videoId]));
+                    setSelectedConnectionId(null);
+                    setDialogNodeId(videoId);
                     const controller = isRepeat
                         ? startGenerationRequest(videoId, nodeId, videoId, runController)
                         : isEmptyVideoNode
@@ -3559,36 +3671,44 @@ function InfiniteCanvasPage() {
                                 },
                             }),
                         );
-                        const videoSize = fitNodeSize(video.width || spec.width, video.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
                         setNodes((prev) =>
-                            prev.map((node) =>
-                                node.id === videoId
-                                    ? {
-                                          ...node,
-                                          width: videoSize.width,
-                                          height: videoSize.height,
-                                          position: { x: node.position.x + node.width / 2 - videoSize.width / 2, y: node.position.y + node.height / 2 - videoSize.height / 2 },
-                                          metadata: {
-                                              ...node.metadata,
-                                              ...videoMetadata(video),
-                                              prompt,
-                                              effectivePrompt,
-                                              composerContent: undefined,
-                                              model: videoTool ? undefined : generationConfig.model,
-                                              modelId: videoTool ? undefined : sourceNode?.metadata?.modelId || generationConfig.model,
-                                              supportedTools: videoTool ? sourceNode?.metadata?.supportedTools : getModelProfile(sourceNode?.metadata?.modelId || generationConfig.model)?.supportedTools,
-                                              size: generationConfig.size,
-                                              seconds: generationConfig.videoSeconds,
-                                              videoMode: generationConfig.videoMode,
-                                              vquality: generationConfig.vquality,
-                                              generateAudio: generationConfig.videoGenerateAudio,
-                                              watermark: generationConfig.videoWatermark,
-                                              references: generationReferenceUrls(generationContext),
-                                              seed: nextSeed,
-                                          },
-                                      }
-                                    : node,
-                            ),
+                            prev.map((node) => {
+                                if (node.id !== videoId) return node;
+                                const shouldLockVideoFrame = Boolean(
+                                    node.metadata?.freeResize ||
+                                    isAspectRatioClose(node.width, node.height, video.width || node.width, video.height || node.height)
+                                );
+                                const edge = Math.max(node.width, node.height, CANVAS_NODE_MAX_BOUND);
+                                const videoSize = shouldLockVideoFrame
+                                    ? { width: node.width, height: node.height }
+                                    : fitNodeSize(video.width || node.width, video.height || node.height, edge, edge);
+                                return {
+                                    ...node,
+                                    width: videoSize.width,
+                                    height: videoSize.height,
+                                    position: shouldLockVideoFrame
+                                        ? node.position
+                                        : { x: node.position.x + node.width / 2 - videoSize.width / 2, y: node.position.y + node.height / 2 - videoSize.height / 2 },
+                                    metadata: {
+                                        ...node.metadata,
+                                        ...videoMetadata(video),
+                                        prompt,
+                                        effectivePrompt,
+                                        composerContent: undefined,
+                                        model: videoTool ? undefined : generationConfig.model,
+                                        modelId: videoTool ? undefined : sourceNode?.metadata?.modelId || generationConfig.model,
+                                        supportedTools: videoTool ? sourceNode?.metadata?.supportedTools : getModelProfile(sourceNode?.metadata?.modelId || generationConfig.model)?.supportedTools,
+                                        size: generationConfig.size,
+                                        seconds: generationConfig.videoSeconds,
+                                        videoMode: generationConfig.videoMode,
+                                        vquality: generationConfig.vquality,
+                                        generateAudio: generationConfig.videoGenerateAudio,
+                                        watermark: generationConfig.videoWatermark,
+                                        references: generationReferenceUrls(generationContext),
+                                        seed: nextSeed,
+                                    },
+                                };
+                            }),
                         );
                         setNodes((prev) => settleCanvasGeneration(prev, { nodeId: videoId, sourceNodeId: nodeId }));
                     } finally {
@@ -3605,10 +3725,10 @@ function InfiniteCanvasPage() {
                     const audioNode: CanvasNodeData = {
                         id: audioId,
                         type: CanvasNodeType.Audio,
-                        title: isRepeat && sourceNode?.title ? sourceNode.title : (isEmptyAudioNode ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Audio, nodesRef.current)),
-                        position: isEmptyAudioNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y + ((sourceNode?.height || spec.height) - spec.height) / 2 },
-                        width: isEmptyAudioNode ? sourceNode.width : (isRepeat && sourceNode?.width ? sourceNode.width : spec.width),
-                        height: isEmptyAudioNode ? sourceNode.height : (isRepeat && sourceNode?.height ? sourceNode.height : spec.height),
+                        title: isEmptyAudioNode && sourceNode?.title ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Audio, nodesRef.current),
+                        position: isEmptyAudioNode && sourceNode ? sourceNode.position : calculateBranchNodePosition(sourceNode, spec, nodesRef.current),
+                        width: isEmptyAudioNode && sourceNode ? sourceNode.width : spec.width,
+                        height: isEmptyAudioNode && sourceNode ? sourceNode.height : spec.height,
                         metadata: {
                             ...(isRepeat && sourceNode?.metadata ? cloneNodeMetadata(sourceNode.metadata, sourceNode.type) : {}),
                             prompt,
@@ -3643,6 +3763,9 @@ function InfiniteCanvasPage() {
                         connectionsRef.current = [...connectionsRef.current, ...nextConnections];
                         setConnections((prev) => [...prev, ...nextConnections]);
                     }
+                    setSelectedNodeIds(new Set([audioId]));
+                    setSelectedConnectionId(null);
+                    setDialogNodeId(audioId);
                     const controller = isRepeat
                         ? startGenerationRequest(audioId, nodeId, audioId, runController)
                         : isEmptyAudioNode
@@ -3704,10 +3827,10 @@ function InfiniteCanvasPage() {
                 const rootNode: CanvasNodeData = {
                     id: rootId,
                     type: CanvasNodeType.Text,
-                    title: isRepeat && sourceNode?.title ? sourceNode.title : (isEmptyTextNode ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Text, nodesRef.current)),
-                    position: isEmptyTextNode ? sourceNode.position : { x: parentPosition.x + (sourceNode?.width || parentConfig.width) + 96, y: isRepeat ? parentPosition.y : parentPosition.y + parentConfig.height / 2 - textConfig.height / 2 },
-                    width: isEmptyTextNode ? sourceNode.width : (isRepeat && sourceNode?.width ? sourceNode.width : textConfig.width),
-                    height: isEmptyTextNode ? sourceNode.height : (isRepeat && sourceNode?.height ? sourceNode.height : textConfig.height),
+                    title: isEmptyTextNode && sourceNode?.title ? sourceNode.title : generateNextNodeTitle(CanvasNodeType.Text, nodesRef.current),
+                    position: isEmptyTextNode && sourceNode ? sourceNode.position : calculateBranchNodePosition(sourceNode, textConfig, nodesRef.current),
+                    width: isEmptyTextNode && sourceNode ? sourceNode.width : textConfig.width,
+                    height: isEmptyTextNode && sourceNode ? sourceNode.height : textConfig.height,
                     metadata: {
                         ...(isRepeat && sourceNode?.metadata ? cloneNodeMetadata(sourceNode.metadata, sourceNode.type) : {}),
                         prompt,
@@ -3762,9 +3885,9 @@ function InfiniteCanvasPage() {
                     connectionsRef.current = [...connectionsRef.current, ...nextConnections];
                     setConnections((prev) => [...prev, ...nextConnections]);
                 }
-                setSelectedNodeIds(new Set([nodeId]));
+                setSelectedNodeIds(new Set([rootId]));
                 setSelectedConnectionId(null);
-                setDialogNodeId(nodeId);
+                setDialogNodeId(rootId);
 
                 const controller = isRepeat
                     ? startGenerationRequest(rootId, nodeId, rootId, runController)
@@ -4150,12 +4273,18 @@ function InfiniteCanvasPage() {
                         prev.map((item) => {
                             if (item.id !== node.id) return item;
                             const makePrimary = !imageId || !item.metadata?.content;
-                            const edge = imageId ? Math.max(item.width, item.height) : 0;
-                            const imageSize = imageId && item.metadata?.freeResize ? { width: item.width, height: item.height } : imageId ? fitNodeSize(uploadedImage.width, uploadedImage.height, edge, edge) : fitNodeSize(uploadedImage.width, uploadedImage.height, imageConfig.width, imageConfig.height);
+                            const shouldLockFrame = Boolean(
+                                item.metadata?.freeResize ||
+                                isAspectRatioClose(item.width, item.height, uploadedImage.width, uploadedImage.height)
+                            );
+                            const edge = Math.max(item.width, item.height, CANVAS_NODE_MAX_BOUND);
+                            const imageSize = shouldLockFrame
+                                ? { width: item.width, height: item.height }
+                                : fitNodeSize(uploadedImage.width, uploadedImage.height, edge, edge);
                             return {
                                 ...item,
                                 type: CanvasNodeType.Image,
-                                ...(makePrimary ? { width: imageSize.width, height: imageSize.height, ...(imageId ? { position: { x: item.position.x + item.width / 2 - imageSize.width / 2, y: item.position.y + item.height / 2 - imageSize.height / 2 } } : {}) } : {}),
+                                ...(makePrimary ? { width: imageSize.width, height: imageSize.height, ...(shouldLockFrame ? {} : { position: { x: item.position.x + item.width / 2 - imageSize.width / 2, y: item.position.y + item.height / 2 - imageSize.height / 2 } }) } : {}),
                                 metadata: {
                                     ...item.metadata,
                                     ...(makePrimary ? imageMetadata(uploadedImage) : { status: NODE_STATUS_SUCCESS }),
@@ -4680,7 +4809,7 @@ function InfiniteCanvasPage() {
                 <CanvasNodeInspectorOverlay
                     node={!isNodeDragging && !isNodeResizing && !selectionBox && inspectorNode && inspectorNode.type !== CanvasNodeType.Group && !getNodeDefinition(inspectorNode.type)?.hidePanel ? inspectorNode : null}
                     viewport={viewport}
-                    toolbarNode={visibleToolbarNode}
+                    toolbarNode={toolbarNode}
                     canvasSize={size}
                     renderPanel={renderNodePanel}
                 />

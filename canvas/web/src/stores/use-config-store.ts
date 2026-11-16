@@ -140,6 +140,8 @@ export type AiConfig = {
     models: string[];
     quality: string;
     size: string;
+    /** 采样步数槽位（工作流内 step 输入）；undefined 表示用工作流默认值 */
+    step?: number;
     background: string;
     count: string;
     canvasImageCount: string;
@@ -173,8 +175,8 @@ export const COMFYUI_BUILTIN_DEFAULT_MODELS: ChannelModel[] = [
     { name: "Qwen-Image-2.1", capability: "image", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_QWEN_IMAGE_21_WORKFLOW },
     { name: "Qwen-Image Inpaint", capability: "image", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_INPAINT_WORKFLOW },
     { name: "Qwen3.5 4B", capability: "text", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_TEXT_WORKFLOW },
-    { name: "MiniMax H3 全能视频", capability: "video", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW },
-    { name: "MiniMax H3 首尾帧视频", capability: "video", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW },
+    { name: "MiniMax H3 全能 (INT8 6步 SelfLift)", capability: "video", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW },
+    { name: "MiniMax H3 首尾帧 (INT8 6步 SelfLift)", capability: "video", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_WORKFLOW },
     { name: "MiniMax Music 03", capability: "audio", comfyuiWorkflow: DEFAULT_BUILTIN_COMFYUI_AUDIO_WORKFLOW },
 ];
 
@@ -194,6 +196,8 @@ export const DEFAULT_SUPPORTED_VIDEO_MODEL_IDS: string[] = [
     "frame-video-minimax-h3-int8-4step-pdmd",
     "omni-video-minimax-h3-int8-6step-pika",
     "frame-video-minimax-h3-int8-6step-pika",
+    "omni-video-minimax-h3-int8-6step-selflift",
+    "frame-video-minimax-h3-int8-6step-selflift",
 ];
 
 /**
@@ -316,9 +320,11 @@ export const defaultConfig: AiConfig = {
             models: COMFYUI_BUILTIN_DEFAULT_MODELS,
         },
     ],
+    // 桌面端保留 Z-Image-Turbo 作为默认生图模型（不跟随上游切到 Qwen-Image-2.1），
+    // 视频默认必须跟随上游改名：BF16 Turbo 工作流已下线，内置视频模型名变为 INT8 6步 SelfLift。
     model: "builtin::Z-Image-Turbo",
     imageModel: "builtin::Z-Image-Turbo",
-    videoModel: "builtin::MiniMax H3 全能视频",
+    videoModel: "builtin::MiniMax H3 全能 (INT8 6步 SelfLift)",
     textModel: "builtin::Qwen3.5 4B",
     audioModel: "builtin::MiniMax Music 03",
     audioVoice: "alloy",

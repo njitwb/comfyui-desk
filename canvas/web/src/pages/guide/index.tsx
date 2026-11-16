@@ -73,8 +73,15 @@ export const CORE_PLUGINS = [
     },
 ];
 
-// 人脸追踪精修进阶扩展插件
+// 人脸追踪精修与深度估计等进阶/专用扩展插件
 export const ADVANCED_PLUGINS = [
+    {
+        name: "ComfyUI-H3-FaceRefine",
+        repo: "Carasibana/ComfyUI-H3-FaceRefine",
+        url: "https://github.com/Carasibana/ComfyUI-H3-FaceRefine",
+        desc: "MiniMax H3 视频人脸追踪、小脸智能裁剪与闭环精修套件 (H3 Face Refine)",
+        usedBy: "视频人脸追踪精修工作流",
+    },
     {
         name: "ComfyUI-MiniMaxH3-Myang",
         repo: "civilcoco/ComfyUI-MiniMaxH3-Myang",
@@ -89,6 +96,13 @@ export const ADVANCED_PLUGINS = [
         desc: "视频流加载与音画组合封装输出节点 (LoadVideo, VHS_VideoCombine)",
         usedBy: "视频人脸追踪精修工作流",
     },
+    {
+        name: "ComfyUI-ReShot",
+        repo: "maosika-ai/ComfyUI-ReShot",
+        url: "https://github.com/maosika-ai/ComfyUI-ReShot",
+        desc: "单目视频深度时序估计、运镜走位提取与结构条件处理 (ReShotDepthVideo)",
+        usedBy: "视频深度估计工作流",
+    },
 ];
 
 export const CLONE_CORE_PLUGINS_CMD = [
@@ -102,8 +116,11 @@ export const CLONE_CORE_PLUGINS_CMD = [
 
 export const CLONE_ADVANCED_PLUGINS_CMD = [
     "cd custom_nodes",
+    "git clone https://github.com/Carasibana/ComfyUI-H3-FaceRefine.git",
     "git clone https://github.com/civilcoco/ComfyUI-MiniMaxH3-Myang.git",
     "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+    "git clone https://github.com/maosika-ai/ComfyUI-ReShot.git",
+    "python -m pip install -r ComfyUI-ReShot/requirements.txt",
 ].join("\n");
 
 type WorkflowModelSpec = {
@@ -119,8 +136,9 @@ type WorkflowVariant = {
     badgeColor?: string;
     baseModel: string;
     description: string;
-    uiFileName: string;
-    uiDownloadUrl: string;
+    // UI 可视化工作流可能暂时缺失（等待从 ComfyUI 重新导出），缺失时手册只提供 API 下载
+    uiFileName?: string;
+    uiDownloadUrl?: string;
     apiFileName: string;
     apiDownloadUrl: string;
     models: WorkflowModelSpec[];
@@ -338,51 +356,51 @@ const WORKFLOWS: WorkflowItem[] = [
                 tips: "标准消费级显存优化版，未连满的多模态插槽提交前自动优雅剔除。",
             },
             {
-                id: "turbo_8",
-                label: "BF16 8步 Turbo (性能版)",
-                badge: "8 步 Turbo / 性能级",
-                badgeColor: "cyan",
-                baseModel: "MiniMax H3 ref2va (BF16 + Turbo LoRA)",
-                description: "挂载 Turbo LoRA 加速，8 步极速采样，适合 24G+ / A100 / H100 专业级显卡算力环境。",
-                uiFileName: "minimax_h3_ref2va_workflow.json",
-                uiDownloadUrl: "/workflows/minimax_h3_ref2va_workflow.json",
-                apiFileName: "minimax_h3_ref2va_bf16_8step_turbo_api.json",
-                apiDownloadUrl: "/workflows/minimax_h3_ref2va_bf16_8step_turbo_api.json",
+                id: "int8_4step",
+                label: "INT8 4步 PDMD (无 FP8 硬件)",
+                badge: "4 步极速 / INT8 旋转量化",
+                badgeColor: "orange",
+                baseModel: "MiniMax H3 ref2va (INT8 ConvRot + PDMD LoRA)",
+                description: "底模替换为 INT8 旋转量化权重，不依赖 FP8 硬件加速，适合未启用 FP8 算子的运行环境；采样参数与 FP8 4步 PDMD 完全一致。",
+                uiFileName: "minimax_h3_ref2v_int8_convrot_4step_pdmd_workflow.json",
+                uiDownloadUrl: "/workflows/minimax_h3_ref2v_int8_convrot_4step_pdmd_workflow.json",
+                apiFileName: "minimax_h3_ref2v_int8_convrot_4step_pdmd_api.json",
+                apiDownloadUrl: "/workflows/minimax_h3_ref2v_int8_convrot_4step_pdmd_api.json",
                 plugins: [
                     { name: "ComfyUI-KJNodes", url: "https://github.com/kijai/ComfyUI-KJNodes" },
                     { name: "ComfyLiterals", url: "https://github.com/M1kep/ComfyLiterals" },
                 ],
                 models: [
-                    { category: "LoRA", folder: "models/loras/", files: ["minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors"] },
-                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_ref2va_bf16.safetensors"] },
-                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_bf16.safetensors"] },
+                    { category: "LoRA", folder: "models/loras/", files: ["minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors"] },
+                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_ref2va_int8_convrot.safetensors"] },
+                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"] },
                     { category: "视频 VAE", folder: "models/vae/", files: ["minimax_h3_video_vae_fp16.safetensors"] },
                     { category: "音频 VAE", folder: "models/vae/", files: ["minimax_h3_audio_vae_fp32.safetensors"] },
                 ],
-                tips: "全精度底模 + Turbo LoRA，生成速度与画质兼备，适合专业计算卡。",
+                tips: "INT8 旋转量化底模（全量未剪枝，约 34 GB）+ 4 步 PDMD 蒸馏 LoRA + EasyCache；其余插件与权重同 FP8 4步 PDMD。",
             },
             {
-                id: "bf16_20",
-                label: "BF16 20步 (全量高精)",
-                badge: "20 步全精度 / 旗舰画质",
-                badgeColor: "blue",
-                baseModel: "MiniMax H3 ref2va (BF16 全量)",
-                description: "完整精度的 20 步标准采样，画质上限最高，具备极高保真度与多模态复杂场景推演能力。",
-                uiFileName: "minimax_h3_ref2va_workflow.json",
-                uiDownloadUrl: "/workflows/minimax_h3_ref2va_workflow.json",
-                apiFileName: "minimax_h3_ref2va_bf16_20step_api.json",
-                apiDownloadUrl: "/workflows/minimax_h3_ref2va_bf16_20step_api.json",
+                id: "int8_6step_pika",
+                label: "INT8 6步 Pika (质感版)",
+                badge: "6 步 Pika / INT8 旋转量化",
+                badgeColor: "orange",
+                baseModel: "MiniMax H3 ref2va (INT8 ConvRot + Pika Flex LoRA)",
+                description: "底模同 INT8 旋转量化权重，蒸馏 LoRA 换为 Pika Flex（采样 6 步，由工作流内 step 节点控制），同样接入 EasyCache；相对 4 步 PDMD 换取更充分的细节与光影演变。",
+                // UI 图与 API 副本不同源，待从 ComfyUI 重新导出后补充 UI 下载项
+                apiFileName: "minimax_h3_ref2v_int8_convrot_6step_pika_api.json",
+                apiDownloadUrl: "/workflows/minimax_h3_ref2v_int8_convrot_6step_pika_api.json",
                 plugins: [
                     { name: "ComfyUI-KJNodes", url: "https://github.com/kijai/ComfyUI-KJNodes" },
                     { name: "ComfyLiterals", url: "https://github.com/M1kep/ComfyLiterals" },
                 ],
                 models: [
-                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_ref2va_bf16.safetensors"] },
-                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_bf16.safetensors"] },
+                    { category: "LoRA", folder: "models/loras/", files: ["pika_h3_flex_ref2va_v1_bf16.safetensors"] },
+                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_ref2va_int8_convrot.safetensors"] },
+                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"] },
                     { category: "视频 VAE", folder: "models/vae/", files: ["minimax_h3_video_vae_fp16.safetensors"] },
                     { category: "音频 VAE", folder: "models/vae/", files: ["minimax_h3_audio_vae_fp32.safetensors"] },
                 ],
-                tips: "画质上限最高，需 24GB+ 显存支持；分辨率严格锁定在 0.2M~0.98M 对齐档位。",
+                tips: "INT8 旋转量化底模（全量未剪枝，约 34 GB）+ Pika Flex 6 步蒸馏 LoRA（约 1.96 GB）+ EasyCache；UI 可视化工作流待补。",
             },
         ],
     },
@@ -438,49 +456,77 @@ const WORKFLOWS: WorkflowItem[] = [
                 tips: "标准 20 步首尾帧插值，音画同步输出。",
             },
             {
-                id: "turbo_8",
-                label: "BF16 8步 Turbo (性能版)",
-                badge: "8 步 Turbo / 性能级",
-                badgeColor: "cyan",
-                baseModel: "MiniMax H3 fl2va (BF16 + Turbo LoRA)",
-                description: "挂载 Turbo LoRA 加速，8 步极速出片，适合高性能工作站或专业计算卡环境。",
-                uiFileName: "minimax_h3_fl2va_workflow.json",
-                uiDownloadUrl: "/workflows/minimax_h3_fl2va_workflow.json",
-                apiFileName: "minimax_h3_fl2va_bf16_8step_turbo_api.json",
-                apiDownloadUrl: "/workflows/minimax_h3_fl2va_bf16_8step_turbo_api.json",
+                id: "int8_4step",
+                label: "INT8 4步 PDMD (无 FP8 硬件)",
+                badge: "4 步极速 / INT8 旋转量化",
+                badgeColor: "orange",
+                baseModel: "MiniMax H3 fl2va (INT8 ConvRot + PDMD LoRA)",
+                description: "底模替换为 INT8 旋转量化权重，不依赖 FP8 硬件加速，适合未启用 FP8 算子的运行环境；首尾帧插值参数与 FP8 4步 PDMD 完全一致。",
+                uiFileName: "minimax_h3_fl2va_int8_convrot_4step_pdmd_workflow.json",
+                uiDownloadUrl: "/workflows/minimax_h3_fl2va_int8_convrot_4step_pdmd_workflow.json",
+                apiFileName: "minimax_h3_fl2va_int8_convrot_4step_pdmd_api.json",
+                apiDownloadUrl: "/workflows/minimax_h3_fl2va_int8_convrot_4step_pdmd_api.json",
                 plugins: [
                     { name: "ComfyLiterals", url: "https://github.com/M1kep/ComfyLiterals" },
                 ],
                 models: [
-                    { category: "LoRA", folder: "models/loras/", files: ["minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors"] },
-                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_fl2va_bf16.safetensors"] },
-                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_bf16.safetensors"] },
+                    { category: "LoRA", folder: "models/loras/", files: ["minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors"] },
+                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_fl2va_int8_convrot.safetensors"] },
+                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"] },
                     { category: "视频 VAE", folder: "models/vae/", files: ["minimax_h3_video_vae_fp16.safetensors"] },
                     { category: "音频 VAE", folder: "models/vae/", files: ["minimax_h3_audio_vae_fp32.safetensors"] },
                 ],
-                tips: "BF16 全精度底模 + Turbo LoRA，高帧率动作流畅平滑。",
+                tips: "INT8 旋转量化底模（全量未剪枝，约 34 GB）+ 4 步 PDMD 蒸馏 LoRA；依赖 ComfyLiterals 节点。",
             },
             {
-                id: "bf16_20",
-                label: "BF16 20步 (全量高精)",
-                badge: "20 步全精度 / 旗舰过渡",
-                badgeColor: "blue",
-                baseModel: "MiniMax H3 fl2va (BF16 全量)",
-                description: "完整精度的 20 步采样，首尾插值细节与画质表现力最强。",
-                uiFileName: "minimax_h3_fl2va_workflow.json",
-                uiDownloadUrl: "/workflows/minimax_h3_fl2va_workflow.json",
-                apiFileName: "minimax_h3_fl2va_bf16_20step_api.json",
-                apiDownloadUrl: "/workflows/minimax_h3_fl2va_bf16_20step_api.json",
+                id: "int8_6step_pika",
+                label: "INT8 6步 Pika (质感版)",
+                badge: "6 步 Pika / INT8 旋转量化",
+                badgeColor: "orange",
+                baseModel: "MiniMax H3 fl2va (INT8 ConvRot + Pika Flex LoRA)",
+                description: "底模同 INT8 旋转量化权重，蒸馏 LoRA 换为 Pika Flex（采样 6 步，由工作流内 step 节点控制）；首尾帧插槽与参数同 4 步 PDMD，换取更充分的细节与平滑过渡。",
+                uiFileName: "minimax_h3_fl2va_int8_convrot_6step_pika_workflow.json",
+                uiDownloadUrl: "/workflows/minimax_h3_fl2va_int8_convrot_6step_pika_workflow.json",
+                apiFileName: "minimax_h3_fl2va_int8_convrot_6step_pika_api.json",
+                apiDownloadUrl: "/workflows/minimax_h3_fl2va_int8_convrot_6step_pika_api.json",
                 plugins: [
                     { name: "ComfyLiterals", url: "https://github.com/M1kep/ComfyLiterals" },
                 ],
                 models: [
-                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_fl2va_bf16.safetensors"] },
-                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_bf16.safetensors"] },
+                    { category: "LoRA", folder: "models/loras/", files: ["pika_h3_flex_fl2va_v1_bf16.safetensors"] },
+                    { category: "扩散模型", folder: "models/diffusion_models/", files: ["minimax_h3_fl2va_int8_convrot.safetensors"] },
+                    { category: "文本编码器", folder: "models/text_encoders/", files: ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"] },
                     { category: "视频 VAE", folder: "models/vae/", files: ["minimax_h3_video_vae_fp16.safetensors"] },
                     { category: "音频 VAE", folder: "models/vae/", files: ["minimax_h3_audio_vae_fp32.safetensors"] },
                 ],
-                tips: "最高画质首尾帧演化，显存需求较高。",
+                tips: "INT8 旋转量化底模（全量未剪枝，约 34 GB）+ Pika Flex 6 步蒸馏 LoRA（约 1.96 GB）；采样步数由 step 节点控制。",
+            },
+        ],
+    },
+    {
+        id: "depth_video",
+        name: "视频深度估计工作流 (Depth Video)",
+        category: "video",
+        defaultVariantId: "depth_video_h3",
+        variants: [
+            {
+                id: "depth_video_h3",
+                label: "ReShot 视频深度估计 (VDA-Small)",
+                badge: "深度提取 / 运镜复刻",
+                badgeColor: "cyan",
+                baseModel: "Video Depth Anything Small",
+                description: "「复制走位与运镜，不复制演员与画风」：将输入参考视频转为时序连贯稳定的灰度深度视频（近白远黑），保留人物空间站位、肢体动作与摄像机运镜轨迹，彻底剥离演员外貌与画风，生成的深度视频可无缝作为 MiniMax H3 或 ControlNet 的强结构参考。",
+                uiFileName: "depth_video_workflow.json",
+                uiDownloadUrl: "/workflows/depth_video_workflow.json",
+                apiFileName: "depth_video_api.json",
+                apiDownloadUrl: "/workflows/depth_video_api.json",
+                plugins: [
+                    { name: "ComfyUI-ReShot", url: "https://github.com/maosika-ai/ComfyUI-ReShot" },
+                ],
+                models: [
+                    { category: "深度估计模型", folder: "~/.cache/huggingface/hub/models--depth-anything--Video-Depth-Anything-Small/", files: ["video_depth_anything_vits.pth (约111MB，首次运行自动下载)"] },
+                ],
+                tips: "⚠️ 依赖 ComfyUI-ReShot 插件；权重首次执行自动下载（国内网络可设置 HF_ENDPOINT=https://hf-mirror.com 加速）；输出尺寸自动居中裁切对齐 32 整数倍（杜绝黑边干扰）。",
             },
         ],
     },
@@ -531,6 +577,7 @@ const WORKFLOWS: WorkflowItem[] = [
                 apiFileName: "H3_Face_Refine_Auto_Select_Api.json",
                 apiDownloadUrl: "/workflows/H3_Face_Refine_Auto_Select_Api.json",
                 plugins: [
+                    { name: "ComfyUI-H3-FaceRefine", url: "https://github.com/Carasibana/ComfyUI-H3-FaceRefine" },
                     { name: "ComfyUI-MiniMaxH3-Myang", url: "https://github.com/civilcoco/ComfyUI-MiniMaxH3-Myang" },
                     { name: "ComfyUI-VideoHelperSuite", url: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite" },
                     { name: "ComfyUI-KJNodes", url: "https://github.com/kijai/ComfyUI-KJNodes" },
@@ -545,7 +592,7 @@ const WORKFLOWS: WorkflowItem[] = [
                     { category: "人体分割检测器", folder: "models/ultralytics/segm/", files: ["person_yolov8m-seg.pt"] },
                     { category: "人脸回退检测器", folder: "models/ultralytics/bbox/", files: ["face_yolov8m.pt"] },
                 ],
-                tips: "⚠️ 依赖 ComfyUI-MiniMaxH3-Myang 与 VHS 扩展插件；YOLO 权重需放入 models/ultralytics/ 目录；系统已内置 Windows 与 Linux 跨平台路径自适应转换。",
+                tips: "⚠️ 依赖 ComfyUI-H3-FaceRefine / ComfyUI-MiniMaxH3-Myang 与 VHS 扩展插件；YOLO 权重需放入 models/ultralytics/ 目录；系统已内置 Windows 与 Linux 跨平台路径自适应转换。",
             },
         ],
     },
@@ -720,7 +767,7 @@ export default function GuidePage() {
             // 收集所有 8 大能力矩阵下的全部变体文件（包括 UI 与 API 格式）
             for (const wf of WORKFLOWS) {
                 for (const variant of wf.variants) {
-                    if (!collectedFiles.has(variant.uiFileName)) {
+                    if (variant.uiFileName && variant.uiDownloadUrl && !collectedFiles.has(variant.uiFileName)) {
                         collectedFiles.add(variant.uiFileName);
                         const res = await fetch(variant.uiDownloadUrl);
                         if (res.ok) {
@@ -1180,7 +1227,7 @@ export default function GuidePage() {
                             </Button>
                         </div>
 
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             {ADVANCED_PLUGINS.map((plugin) => (
                                 <div
                                     key={plugin.name}
@@ -1298,7 +1345,10 @@ export default function GuidePage() {
                                             </div>
                                         </div>
                                     ),
-                                    onClick: () => handleDownloadSingle(activeVariant.uiDownloadUrl, activeVariant.uiFileName),
+                                    onClick: () =>
+                                        activeVariant.uiDownloadUrl &&
+                                        activeVariant.uiFileName &&
+                                        handleDownloadSingle(activeVariant.uiDownloadUrl, activeVariant.uiFileName),
                                 },
                                 {
                                     key: "api",
@@ -1356,7 +1406,10 @@ export default function GuidePage() {
                                                     type="primary"
                                                     size="small"
                                                     icon={<Download className="size-3.5" />}
+                                                    disabled={!activeVariant.uiDownloadUrl || !activeVariant.uiFileName}
                                                     onClick={() =>
+                                                        activeVariant.uiDownloadUrl &&
+                                                        activeVariant.uiFileName &&
                                                         handleDownloadSingle(
                                                             activeVariant.uiDownloadUrl,
                                                             activeVariant.uiFileName

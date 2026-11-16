@@ -40,7 +40,8 @@ const DEFAULT_SIZE: ComfyuiSize = { width: 512, height: 512 };
 const MAX_PIXEL = 8192;
 
 const PIXEL_SIZE_PATTERN = /^(\d+)\s*[x×]\s*(\d+)$/;
-const RATIO_PATTERN = /^(\d+)\s*:\s*(\d+)(?:\s*[-_]\s*(1k|2k|4k))?$/i;
+const TIER_FIRST_PATTERN = /^(1k|2k|4k)[\s,_\-:]+(\d+)\s*:\s*(\d+)$/i;
+const RATIO_FIRST_PATTERN = /^(\d+)\s*:\s*(\d+)(?:[\s,_\-\(]+(1k|2k|4k)\)?)?$/i;
 
 function roundToEven(value: number) {
     return Math.max(2, Math.round(value / 2) * 2);
@@ -49,7 +50,7 @@ function roundToEven(value: number) {
 /**
  * Parse an image size setting into pixel dimensions.
  * Accepts "auto"/empty (falls back to 512x512 1K), pixel sizes ("512x512", "1024x1024"),
- * and standard aspect ratios ("1:1", "16:9", "16:9-2k", "9:16-4k" matching 64px-aligned presets).
+ * and standard aspect ratios ("1:1", "16:9", "16:9-2k", "9:16-4k", "4k, 9:16" matching 64px-aligned presets).
  * Anything else throws.
  */
 export function parseSize(size?: string): ComfyuiSize {
@@ -65,12 +66,17 @@ export function parseSize(size?: string): ComfyuiSize {
         if (width > MAX_PIXEL || height > MAX_PIXEL) throw new Error(`Invalid image size: ${value}`);
         return { width, height };
     }
-    const ratioMatch = RATIO_PATTERN.exec(value);
-    if (ratioMatch) {
-        const a = Number(ratioMatch[1]);
-        const b = Number(ratioMatch[2]);
+    const tierFirstMatch = TIER_FIRST_PATTERN.exec(value);
+    const ratioFirstMatch = RATIO_FIRST_PATTERN.exec(value);
+    const matchedRatio = tierFirstMatch
+        ? { a: Number(tierFirstMatch[2]), b: Number(tierFirstMatch[3]), tier: tierFirstMatch[1].toLowerCase() as ImageResolutionTier }
+        : ratioFirstMatch
+        ? { a: Number(ratioFirstMatch[1]), b: Number(ratioFirstMatch[2]), tier: (ratioFirstMatch[3]?.toLowerCase() || "1k") as ImageResolutionTier }
+        : null;
+
+    if (matchedRatio) {
+        const { a, b, tier } = matchedRatio;
         if (a <= 0 || b <= 0) throw new Error(`Invalid image size: ${value}`);
-        const tier = (ratioMatch[3]?.toLowerCase() || "1k") as ImageResolutionTier;
         const ratioKey = `${a}:${b}` as ImageAspectRatio;
         const preset = IMAGE_RESOLUTION_PRESETS[tier]?.[ratioKey];
         if (preset) {
@@ -954,6 +960,12 @@ export function adaptWorkflowModelPaths(
 }
 
 export const COMFYUI_CORE_PLUGINS = [
+    {
+        name: "ComfyUI-H3-FaceRefine",
+        url: "https://github.com/Carasibana/ComfyUI-H3-FaceRefine",
+        keywords: ["h3facerefine", "facerefine", "h3 load video + face select", "h3 face track + crop"],
+        desc: "MiniMax H3 视频人脸追踪精修套件",
+    },
     {
         name: "ComfyUI-MiniMaxH3-Myang",
         url: "https://github.com/civilcoco/ComfyUI-MiniMaxH3-Myang",
@@ -2204,6 +2216,7 @@ export interface ComfyuiImageRequest {
     prompt: string;
     size?: string;
     seed?: number;
+    step?: number;
     jobId?: string;
     references?: ReferenceImage[];
     channelId?: string;
@@ -2211,6 +2224,7 @@ export interface ComfyuiImageRequest {
     category?: WorkflowCategory;
     signal?: AbortSignal;
     onProgress?: (status: string, detail?: Record<string, unknown>) => void;
+    skipLog?: boolean;
 }
 
 export interface ComfyuiImageResult {
@@ -2336,18 +2350,20 @@ export async function requestComfyuiImage(req: ComfyuiImageRequest): Promise<Com
                 if (references.length > referenceSlots.length) throw new ComfyuiError(i18n.t("comfyui.imageReferenceLimit", { count: referenceSlots.length }));
             }
 
+            const isAutoOrEmptySize = !req.size || req.size.toLowerCase() === "auto";
             const size = parseSize(req.size);
             if (seed === undefined) seed = generateRandomSeed();
             const refImages = await Promise.all(references.map((image, index) => uploadComfyuiAsset(baseUrl, token, image.dataUrl, image.name || `ref_image_${index + 1}.png`, req.signal)));
             const boundWorkflow = modelProfile
                 ? dispatchComfyuiModelWorkflow(modelProfile, workflow.json, {
                       prompt: req.prompt,
-                      width: size.width,
-                      height: size.height,
+                      width: isAutoOrEmptySize ? undefined : size.width,
+                      height: isAutoOrEmptySize ? undefined : size.height,
                       seed,
+                      step: req.step ?? req.config.step,
                       assetIds: refImages,
                   })
-                : applyBindings(workflow.json, { prompt: req.prompt, width: size.width, height: size.height, seed, refImages });
+                : applyBindings(workflow.json, { prompt: req.prompt, width: isAutoOrEmptySize ? undefined : size.width, height: isAutoOrEmptySize ? undefined : size.height, seed, refImages });
             jobId = await submitJob(boundWorkflow, baseUrl, token);
             req.onProgress?.("submitted", { jobId });
         }
@@ -2387,20 +2403,22 @@ export async function requestComfyuiImage(req: ComfyuiImageRequest): Promise<Com
             items.push({ id: nanoid(), dataUrl, seed });
         }
 
-        void logImageGeneration({ model: requestConfig.model, prompt: req.prompt, provider: "comfyui", jobId, durationMs: Date.now() - startedAt, status: "success", imageCount: items.length, images: items, seed }).catch(() => undefined);
+        if (!req.skipLog) void logImageGeneration({ model: requestConfig.model, prompt: req.prompt, provider: "comfyui", jobId, durationMs: Date.now() - startedAt, status: "success", imageCount: items.length, images: items, seed }).catch(() => undefined);
         return { items, jobId, seed };
     } catch (error) {
         error = addComfyuiChannelContext(error, channelName);
-        void logImageGeneration({
-            model: requestConfig?.model ?? req.model,
-            prompt: req.prompt,
-            provider: "comfyui",
-            jobId: jobId || undefined,
-            durationMs: Date.now() - startedAt,
-            status: "failed",
-            errorMessage: error instanceof Error ? error.message : String(error),
-            seed,
-        }).catch(() => undefined);
+        if (!req.skipLog) {
+            void logImageGeneration({
+                model: requestConfig?.model ?? req.model,
+                prompt: req.prompt,
+                provider: "comfyui",
+                jobId: jobId || undefined,
+                durationMs: Date.now() - startedAt,
+                status: "failed",
+                errorMessage: error instanceof Error ? error.message : String(error),
+                seed,
+            }).catch(() => undefined);
+        }
         throw error;
     }
 }
@@ -2464,9 +2482,11 @@ export interface ComfyuiInpaintRequest {
     channelId?: string;
     workflowId?: string;
     seed?: number;
+    step?: number;
     jobId?: string;
     signal?: AbortSignal;
     onProgress?: (status: string, detail?: { jobId?: string }) => void;
+    skipLog?: boolean;
 }
 
 export async function requestComfyuiInpaint(req: ComfyuiInpaintRequest): Promise<ComfyuiImageResult> {
@@ -2516,6 +2536,7 @@ export async function requestComfyuiInpaint(req: ComfyuiInpaintRequest): Promise
                 ? dispatchComfyuiModelWorkflow(modelProfile, inpaintWorkflow.json, {
                       prompt: req.prompt,
                       seed,
+                      step: req.step ?? req.config.step,
                       assetIds: [refAssetId],
                       maskAssetId,
                   })
@@ -2564,20 +2585,22 @@ export async function requestComfyuiInpaint(req: ComfyuiInpaintRequest): Promise
             items.push({ id: nanoid(), dataUrl, seed });
         }
 
-        void logImageGeneration({ model: "ComfyUI Inpaint", prompt: req.prompt, provider: "comfyui", jobId, durationMs: Date.now() - startedAt, status: "success", imageCount: items.length, images: items, seed }).catch(() => undefined);
+        if (!req.skipLog) void logImageGeneration({ model: "ComfyUI Inpaint", prompt: req.prompt, provider: "comfyui", jobId, durationMs: Date.now() - startedAt, status: "success", imageCount: items.length, images: items, seed }).catch(() => undefined);
         return { items, jobId, seed };
     } catch (error) {
         error = addComfyuiChannelContext(error, channelName);
-        void logImageGeneration({
-            model: "ComfyUI Inpaint",
-            prompt: req.prompt,
-            provider: "comfyui",
-            jobId: jobId || undefined,
-            durationMs: Date.now() - startedAt,
-            status: "failed",
-            errorMessage: error instanceof Error ? error.message : String(error),
-            seed,
-        }).catch(() => undefined);
+        if (!req.skipLog) {
+            void logImageGeneration({
+                model: "ComfyUI Inpaint",
+                prompt: req.prompt,
+                provider: "comfyui",
+                jobId: jobId || undefined,
+                durationMs: Date.now() - startedAt,
+                status: "failed",
+                errorMessage: error instanceof Error ? error.message : String(error),
+                seed,
+            }).catch(() => undefined);
+        }
         throw error;
     }
 }
@@ -3445,6 +3468,7 @@ export interface ComfyuiVideoRequest {
     channelId?: string;
     workflowId?: string;
     seed?: number;
+    step?: number;
     signal?: AbortSignal;
     jobId?: string;
     onProgress?: (status: string, detail?: { jobId?: string }) => void;
@@ -3637,6 +3661,7 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
                   height,
                   duration,
                   seed,
+                  step: req.step ?? req.config.step,
                   firstFrameAssetId,
                   lastFrameAssetId,
                   assetIds,
@@ -3977,6 +4002,51 @@ export function findWorkflowSelectNodes(workflow: ComfyuiWorkflowJson): Workflow
     }
 
     return results;
+}
+
+export type WorkflowStepNodeInfo = {
+    nodeId: string;
+    title: string;
+    classType?: string;
+    inputKey: string;
+    currentValue: number;
+};
+
+/**
+ * 扫描工作流 JSON 中标注为 _meta.title === "step" 的采样步数节点
+ * 严格按照 _meta.title === "step" 精确匹配
+ */
+export function findWorkflowStepNode(workflow: ComfyuiWorkflowJson): WorkflowStepNodeInfo | null {
+    if (!workflow || typeof workflow !== "object") return null;
+    const nodes = Object.entries(workflow);
+    for (const [nodeId, rawNode] of nodes) {
+        if (!rawNode || typeof rawNode !== "object") continue;
+        const node = rawNode as {
+            class_type?: string;
+            inputs?: Record<string, unknown>;
+            _meta?: { title?: unknown };
+        };
+        if (node._meta?.title === "step") {
+            const inputs = node.inputs || {};
+            let inputKey = "value";
+            if (!("value" in inputs) && "steps" in inputs) {
+                inputKey = "steps";
+            }
+            if (!(inputKey in inputs)) continue;
+            const rawVal = inputs[inputKey];
+            if (Array.isArray(rawVal)) continue;
+            const numVal = typeof rawVal === "number" ? rawVal : Number(rawVal);
+            if (isNaN(numVal) || numVal < 1) continue;
+            return {
+                nodeId,
+                title: "step",
+                classType: node.class_type,
+                inputKey,
+                currentValue: Math.max(1, Math.round(numVal)),
+            };
+        }
+    }
+    return null;
 }
 
 /**

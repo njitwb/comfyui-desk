@@ -9,6 +9,7 @@ import {
     videoMinimaxH3OmniFp8Profile,
     videoMinimaxH3OmniInt8PdmdProfile,
     videoMinimaxH3OmniInt8PikaProfile,
+    videoMinimaxH3OmniInt8SelfLiftProfile,
     videoMinimaxH3OmniProfile,
     MINIMAX_H3_SIZES,
 } from "./video-minimax-h3-omni";
@@ -17,6 +18,7 @@ import {
     videoMinimaxH3FrameFp8Profile,
     videoMinimaxH3FrameInt8PdmdProfile,
     videoMinimaxH3FrameInt8PikaProfile,
+    videoMinimaxH3FrameInt8SelfLiftProfile,
     videoMinimaxH3FrameProfile,
 } from "./video-minimax-h3-frame";
 import {
@@ -48,7 +50,7 @@ export * from "./audio-models";
 export * from "./constraint-engine";
 
 /**
- * 系统内置视频工作流模型清单（4 款 FP8 + 4 款 INT8 量化模型）
+ * 系统内置视频工作流模型清单（4 款 FP8 + 6 款 INT8 量化模型）
  * 顺序敏感：FP8 4步 PDMD 必须首位，作为视频节点的默认回退模型
  */
 export const BUILTIN_VIDEO_WORKFLOW_MODELS: WorkflowModelProfile[] = [
@@ -60,6 +62,8 @@ export const BUILTIN_VIDEO_WORKFLOW_MODELS: WorkflowModelProfile[] = [
     videoMinimaxH3FrameInt8PdmdProfile,
     videoMinimaxH3OmniInt8PikaProfile,
     videoMinimaxH3FrameInt8PikaProfile,
+    videoMinimaxH3OmniInt8SelfLiftProfile,
+    videoMinimaxH3FrameInt8SelfLiftProfile,
 ];
 
 /**
@@ -129,6 +133,8 @@ export function getModelProfile(modelIdOrCategory?: string): WorkflowModelProfil
     // 4. 图片模型别名匹配
     if (
         lower === "image-qwen-2.1" ||
+        lower === "qwen-image-2.1" ||
+        lower === "qwen-image2.1" ||
         lower === "qwen-2.1" ||
         lower === "qwen2.1" ||
         lower === "qwen" ||
@@ -204,9 +210,9 @@ export function listModelsByCapability(capability: ModelCapabilityType): Workflo
 /**
  * 视频模型家族标识（量化规格 + 蒸馏档位），用于在「全能参考 / 首尾帧」之间切换时
  * 保留当前模型家族，避免静默回退到 FP8 默认模型。
- * 形如 `omni-video-minimax-h3-{fp8|int8}[-4step-pdmd|-6step-pika]`。
+ * 形如 `omni-video-minimax-h3-{fp8|int8}[-4step-pdmd|-6step-pika|-6step-selflift]`。
  */
-const VIDEO_MODEL_VARIANT_SUFFIXES = ["-4step-pdmd", "-6step-pika"] as const;
+const VIDEO_MODEL_VARIANT_SUFFIXES = ["-4step-pdmd", "-6step-pika", "-6step-selflift"] as const;
 const VIDEO_MODEL_SUFFIX_PATTERN = `(?:${VIDEO_MODEL_VARIANT_SUFFIXES.join("|")})`;
 const VIDEO_MODEL_ID_PATTERN = new RegExp(`^(?:omni|frame)-video-minimax-h3-(fp8|int8)(${VIDEO_MODEL_SUFFIX_PATTERN})?$`);
 const VIDEO_MODEL_ID_SEARCH_PATTERN = new RegExp(`(?:omni|frame)-video-minimax-h3-(?:fp8|int8)${VIDEO_MODEL_SUFFIX_PATTERN}?`);
@@ -239,7 +245,13 @@ export function resolveModelIdFromWorkflowId(workflowId: string | undefined): st
         return videoMatch;
     }
     const lower = workflowId.toLowerCase();
-    if (lower.includes("qwen-image-21") || lower.includes("qwen-image-2.1") || lower.includes("qwen-2.1") || lower.includes("qwen2.1")) {
+    if (
+        lower.includes("qwen-image-21") ||
+        lower.includes("qwen-image-2.1") ||
+        lower.includes("qwen-image2.1") ||
+        lower.includes("qwen-2.1") ||
+        lower.includes("qwen2.1")
+    ) {
         return "image-qwen-2.1";
     }
     if (lower.includes("z-image-turbo") || lower.includes("z-turbo") || lower.includes("z-image")) {
@@ -343,6 +355,8 @@ export interface DispatchedWorkflowParams {
     height?: number;
     duration?: number;
     seed?: number;
+    step?: number;
+    steps?: number;
     assetIds?: string[];
     videoAssetIds?: string[];
     audioAssetIds?: string[];
@@ -430,6 +444,18 @@ export function dispatchComfyuiModelWorkflow(
             if ("seed" in node.inputs) node.inputs.seed = params.seed;
             else if ("noise_seed" in node.inputs) node.inputs.noise_seed = params.seed;
             else if ("value" in node.inputs) node.inputs.value = params.seed;
+        }
+
+        // 采样步数插槽绑定 (严格匹配 _meta.title === "step")
+        if (node._meta?.title === "step" && (params.step !== undefined || params.steps !== undefined)) {
+            const raw = params.step !== undefined ? params.step : params.steps;
+            if (typeof raw === "number" || (typeof raw === "string" && String(raw).trim() !== "")) {
+                const stepVal = Math.round(Number(raw));
+                if (!isNaN(stepVal)) {
+                    if ("value" in node.inputs) node.inputs.value = stepVal;
+                    else if ("steps" in node.inputs) node.inputs.steps = stepVal;
+                }
+            }
         }
 
         // 首尾帧插槽绑定
@@ -572,6 +598,7 @@ export function dispatchComfyuiModelWorkflow(
     }
 
     // Pass 4: 动态切换潜空间路由开关（例如文生图与图生图/多图参考切换的 ComfySwitchNode）
+    const hasCustomSize = params.width !== undefined && params.height !== undefined;
     for (const node of Object.values(cloned)) {
         if (typeof node !== "object" || node === null) continue;
         if (node.class_type === "ComfySwitchNode" && node.inputs) {
@@ -587,9 +614,9 @@ export function dispatchComfyuiModelWorkflow(
                 const falseIsEmptyLatent = Boolean(falseTargetNode?.class_type?.includes("EmptyLatent"));
 
                 if (trueIsEmptyLatent && !falseIsEmptyLatent) {
-                    node.inputs.switch = assignedImageCount === 0;
+                    node.inputs.switch = hasCustomSize || assignedImageCount === 0;
                 } else if (falseIsEmptyLatent && !trueIsEmptyLatent) {
-                    node.inputs.switch = assignedImageCount > 0;
+                    node.inputs.switch = !hasCustomSize && assignedImageCount > 0;
                 }
             }
         }

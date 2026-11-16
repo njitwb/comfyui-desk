@@ -206,7 +206,7 @@
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "select_models_diffusion_models"
+      "title": "UNet加载器"
     }
   },
   "136": {
@@ -217,7 +217,7 @@
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "select_models_clip"
+      "title": "加载CLIP"
     }
   },
   "137": {

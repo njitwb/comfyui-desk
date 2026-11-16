@@ -27,6 +27,7 @@ export default {
         "view": "View",
         "download": "Download",
         "upload": "Upload",
+        "close": "Close",
         "requestCanceled": "Request canceled",
         "durationMinutes": "{{minutes}}m {{seconds}}s",
         "durationSeconds": "{{seconds}}s",
@@ -250,6 +251,8 @@ export default {
         "empty": "No assets found",
         "manual": "Added manually",
         "selectImage": "Select an image file",
+        "selectAudio": "Select an audio file",
+        "selectVideo": "Select a video file",
         "updated": "Asset updated",
         "saved": "Asset saved",
         "textCopied": "Text copied",
@@ -261,7 +264,8 @@ export default {
         "kinds": {
             "text": "Text",
             "image": "Image",
-            "video": "Video"
+            "video": "Video",
+            "audio": "Audio"
         },
         "fields": {
             "title": "Title",
@@ -278,12 +282,19 @@ export default {
             "textContent": "Text content",
             "textRequired": "Enter text content",
             "textPlaceholder": "Save prompts, copy, reference descriptions, and other text assets",
-            "imageContent": "Image content"
+            "imageContent": "Image content",
+            "videoContent": "Video content",
+            "audioContent": "Audio content"
         },
         "selectImageFile": "Select image file",
         "noImageSelected": "No image selected",
+        "selectAudioFile": "Select audio file",
+        "noAudioSelected": "No audio selected",
+        "selectVideoFile": "Select video file",
+        "noVideoSelected": "No video selected",
         "preview": "Preview",
         "noCover": "No cover",
+        "characterCount": "{{count}} chars",
         "untitled": "Untitled asset",
         "noTags": "No tags",
         "untagged": "Untagged",
@@ -293,7 +304,8 @@ export default {
         "deleteConfirm": "Delete “{{name}}”? It will be removed from My Assets.",
         "copyText": "Copy text",
         "downloadImage": "Download image",
-        "downloadVideo": "Download video"
+        "downloadVideo": "Download video",
+        "downloadAudio": "Download audio"
     },
     "notFound": {
         "title": "Page not found",
@@ -2133,6 +2145,10 @@ export default {
         "resetDefaultSuccess": "Reset to factory built-in version \"{{name}}\"",
         "saveSuccess": "Saved \"{{name}}\", changes took effect across all channels!",
         "saveChanges": "Save Changes (Global)",
+        "stepConfigTitle": "Sampling Steps Configuration (step)",
+        "stepConfigDesc": "Save changes to set this as the baseline sampling steps for this workflow across all channels and canvas.",
+        "stepLabel": "Sampling Steps (steps)",
+        "stepPlaceholder": "Enter integer steps",
         "modelConfigTitle": "Visual Model & Encoder Configuration",
         "detectedSlots": "Detected {{count}} model selection slots",
         "noSlots": "No select_models_* slots annotated in this workflow",

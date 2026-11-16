@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTextBindings } from "../../comfyui";
+import { applyTextBindings, findWorkflowStepNode, updateWorkflowNodeInput } from "../../comfyui";
 import {
     BUILTIN_IMAGE_WORKFLOW_MODELS,
     BUILTIN_VIDEO_WORKFLOW_MODELS,
@@ -24,14 +24,15 @@ import {
     videoMinimaxH3OmniFp8Profile,
     videoMinimaxH3OmniProfile,
     MINIMAX_H3_SIZES,
+    getDslMiddleSize,
     IMAGE_RESOLUTION_PRESETS,
     getImageDimensions,
     parseImageSizeTierAndRatio,
 } from "../index";
 
-describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
-    it("registers 4 FP8 + 4 INT8 models and excludes BF16", () => {
-        expect(BUILTIN_VIDEO_WORKFLOW_MODELS.length).toBe(8);
+describe("Workflow Model Profiles (MiniMax H3 10 Video Models)", () => {
+    it("registers 4 FP8 + 6 INT8 models and excludes BF16", () => {
+        expect(BUILTIN_VIDEO_WORKFLOW_MODELS.length).toBe(10);
         expect(BUILTIN_VIDEO_WORKFLOW_MODELS.map((m) => m.id)).toEqual([
             "omni-video-minimax-h3-fp8-4step-pdmd",
             "omni-video-minimax-h3-fp8",
@@ -41,6 +42,8 @@ describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
             "frame-video-minimax-h3-int8-4step-pdmd",
             "omni-video-minimax-h3-int8-6step-pika",
             "frame-video-minimax-h3-int8-6step-pika",
+            "omni-video-minimax-h3-int8-6step-selflift",
+            "frame-video-minimax-h3-int8-6step-selflift",
         ]);
 
         // BF16 models should be completely purged
@@ -60,6 +63,8 @@ describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
         expect(profile?.capabilityConfig.references.maxVideos).toBe(3);
         expect(profile?.capabilityConfig.references.maxAudios).toBe(3);
         expect(profile?.capabilityConfig.size?.values).toEqual(MINIMAX_H3_SIZES);
+        expect(profile?.capabilityConfig.size?.values.length).toBe(24);
+        expect(profile?.capabilityConfig.size?.default).toBe("1344x768");
         expect(profile?.capabilityConfig.duration?.tags).toEqual([5, 10, 15]);
     });
 
@@ -127,6 +132,38 @@ describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
         expect(framePika.supportedTools).toEqual(framePdmd.supportedTools);
     });
 
+    it("registers SelfLift 6-step models sharing the INT8 capability contract", () => {
+        const omniSelfLift = getModelProfile("omni-video-minimax-h3-int8-6step-selflift")!;
+        expect(omniSelfLift).toBeDefined();
+        expect(omniSelfLift.category).toBe("omniVideo");
+        expect(omniSelfLift.steps).toBe(6);
+        expect(omniSelfLift.capabilityConfig.references.maxImages).toBe(9);
+        expect(omniSelfLift.capabilityConfig.size?.values).toEqual(MINIMAX_H3_SIZES);
+
+        const frameSelfLift = getModelProfile("frame-video-minimax-h3-int8-6step-selflift")!;
+        expect(frameSelfLift).toBeDefined();
+        expect(frameSelfLift.category).toBe("frameVideo");
+        expect(frameSelfLift.steps).toBe(6);
+        expect(frameSelfLift.capabilityConfig.references.maxImages).toBe(2);
+        expect(frameSelfLift.capabilityConfig.size?.values).toEqual(MINIMAX_H3_SIZES);
+    });
+
+    it("computes dynamic middle size via getDslMiddleSize for both 16:9 and 9:16", () => {
+        // Standard 12 tiers (24 entries) defaults to 0.98 MP tier (index 6: 1344x768)
+        expect(getDslMiddleSize(MINIMAX_H3_SIZES, "16:9")).toBe("1344x768");
+        expect(getDslMiddleSize(MINIMAX_H3_SIZES, "9:16")).toBe("768x1344");
+
+        // Custom odd tiers (e.g. 3 tiers: 864x480, 1152x640, 1504x832 -> middle is 1152x640)
+        const oddTiers = ["864x480", "480x864", "1152x640", "640x1152", "1504x832", "832x1504"];
+        expect(getDslMiddleSize(oddTiers, "16:9")).toBe("1152x640");
+        expect(getDslMiddleSize(oddTiers, "9:16")).toBe("640x1152");
+
+        // Empty array fallback
+        expect(getDslMiddleSize([], "16:9")).toBe("1344x768");
+        expect(getDslMiddleSize(undefined, "9:16")).toBe("768x1344");
+        expect(getDslMiddleSize(["invalid"], "16:9")).toBe("1344x768");
+    });
+
     it("resolves sibling models across omni/frame mode switches without dropping the INT8 family", () => {
         expect(resolveVideoModelIdForMode("omni-video-minimax-h3-int8-4step-pdmd", "frame"))
             .toBe("frame-video-minimax-h3-int8-4step-pdmd");
@@ -147,6 +184,13 @@ describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
             .toBe("omni-video-minimax-h3-int8-6step-pika");
     });
 
+    it("keeps the SelfLift 6-step family across omni/frame mode switches", () => {
+        expect(resolveVideoModelIdForMode("omni-video-minimax-h3-int8-6step-selflift", "frame"))
+            .toBe("frame-video-minimax-h3-int8-6step-selflift");
+        expect(resolveVideoModelIdForMode("frame-video-minimax-h3-int8-6step-selflift", "omni"))
+            .toBe("omni-video-minimax-h3-int8-6step-selflift");
+    });
+
     it("resolves video model id from channel workflow id", () => {
         expect(resolveVideoModelIdFromWorkflowId("builtin-omni-video-minimax-h3-int8-4step-pdmd"))
             .toBe("omni-video-minimax-h3-int8-4step-pdmd");
@@ -156,6 +200,10 @@ describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
             .toBe("omni-video-minimax-h3-int8-6step-pika");
         expect(resolveVideoModelIdFromWorkflowId("builtin-frame-video-minimax-h3-int8-6step-pika"))
             .toBe("frame-video-minimax-h3-int8-6step-pika");
+        expect(resolveVideoModelIdFromWorkflowId("builtin-omni-video-minimax-h3-int8-6step-selflift"))
+            .toBe("omni-video-minimax-h3-int8-6step-selflift");
+        expect(resolveVideoModelIdFromWorkflowId("builtin-frame-video-minimax-h3-int8-6step-selflift"))
+            .toBe("frame-video-minimax-h3-int8-6step-selflift");
         expect(resolveVideoModelIdFromWorkflowId("builtin-t2i-qwen-image-21")).toBeUndefined();
         expect(resolveVideoModelIdFromWorkflowId(undefined)).toBeUndefined();
     });
@@ -185,7 +233,7 @@ describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
 
     it("lists models by capability", () => {
         const videoModels = listModelsByCapability("video");
-        expect(videoModels.length).toBe(8);
+        expect(videoModels.length).toBe(10);
         expect(videoModels.map((m) => m.id)).toEqual([
             "omni-video-minimax-h3-fp8-4step-pdmd",
             "omni-video-minimax-h3-fp8",
@@ -195,6 +243,8 @@ describe("Workflow Model Profiles (MiniMax H3 8 Video Models)", () => {
             "frame-video-minimax-h3-int8-4step-pdmd",
             "omni-video-minimax-h3-int8-6step-pika",
             "frame-video-minimax-h3-int8-6step-pika",
+            "omni-video-minimax-h3-int8-6step-selflift",
+            "frame-video-minimax-h3-int8-6step-selflift",
         ]);
 
         const imageModels = listModelsByCapability("image");
@@ -248,6 +298,9 @@ describe("Workflow Model Profiles (Image Workflow Models)", () => {
     it("resolves image profiles by legacy aliases", () => {
         expect(getModelProfile("t2i")?.id).toBe("image-qwen-2.1");
         expect(getModelProfile("qwen-2.1")?.id).toBe("image-qwen-2.1");
+        expect(getModelProfile("qwen-image2.1")?.id).toBe("image-qwen-2.1");
+        expect(getModelProfile("qwen-image-2.1")?.id).toBe("image-qwen-2.1");
+        expect(getModelProfile("Qwen-Image-2.1")?.id).toBe("image-qwen-2.1");
         expect(getModelProfile("turbo")?.id).toBe("image-z-turbo");
         expect(getModelProfile("z-turbo")?.id).toBe("image-z-turbo");
         expect(getModelProfile("i2i")?.id).toBe("image-flux2-dev");
@@ -371,18 +424,34 @@ describe("validateModelExecution (Fail-loud validation)", () => {
         ).toThrow("最多支持 3 个参考音频");
     });
 
-    it("rejects sizes outside the 9 hardware-aligned tiers", () => {
+    it("rejects sizes outside the 12 hardware-aligned tiers", () => {
         expect(() =>
             validateModelExecution(videoMinimaxH3OmniFp8PdmdProfile, { size: "1000x500" })
         ).toThrow("不支持尺寸 1000x500");
 
-        // Valid size should not throw
+        // Removed 0.2 and 0.3 tiers are rejected
+        expect(() =>
+            validateModelExecution(videoMinimaxH3OmniFp8PdmdProfile, { size: "608x352" })
+        ).toThrow("不支持尺寸 608x352");
+        expect(() =>
+            validateModelExecution(videoMinimaxH3OmniFp8PdmdProfile, { size: "736x416" })
+        ).toThrow("不支持尺寸 736x416");
+
+        // Valid sizes in 12 tiers should not throw
         expect(() =>
             validateModelExecution(videoMinimaxH3OmniFp8PdmdProfile, { size: "1280x736" })
         ).not.toThrow();
 
         expect(() =>
             validateModelExecution(videoMinimaxH3OmniFp8PdmdProfile, { size: "736x1280" })
+        ).not.toThrow();
+
+        // 2.0 MP tier
+        expect(() =>
+            validateModelExecution(videoMinimaxH3OmniFp8PdmdProfile, { size: "1920x1088" })
+        ).not.toThrow();
+        expect(() =>
+            validateModelExecution(videoMinimaxH3OmniFp8PdmdProfile, { size: "1088x1920" })
         ).not.toThrow();
     });
 
@@ -537,7 +606,16 @@ describe("dispatchComfyuiModelWorkflow (Cascade Pruning & Parameter Injection)",
         expect((dispatched["20"] as any).inputs["images.image_1"]).toEqual(["11", 0]);
         expect((dispatched["20"] as any).inputs["images.image_2"]).toBeUndefined();
         expect((dispatched["20"] as any).inputs["images.image_3"]).toBeUndefined();
-        expect((dispatched["31"] as any).inputs.switch).toBe(false);
+        // 显式指定宽高（如 4K 9:16 = 1536x2688 或 768x1024）时，保持 switch = true 走 EmptyLatentImage 遵循目标画幅尺寸
+        expect((dispatched["31"] as any).inputs.switch).toBe(true);
+
+        // 未显式指定宽高且有参考图时，切到 switch = false 走参考图 Latent
+        const dispatchedNoSize = dispatchComfyuiModelWorkflow(imageQwen21Profile, rawWorkflow, {
+            prompt: "赛博朋克雨夜街道",
+            seed: 888,
+            assetIds: ["new_ref1.png"],
+        });
+        expect((dispatchedNoSize["31"] as any).inputs.switch).toBe(false);
 
         // 当无参考图时，自动回退纯文生图 (switch = true 走 EmptyLatentImage)
         const t2iDispatched = dispatchComfyuiModelWorkflow(imageQwen21Profile, rawWorkflow, {
@@ -644,5 +722,83 @@ describe("dispatchComfyuiModelWorkflow (Cascade Pruning & Parameter Injection)",
         });
         expect((boundFallback["1"] as any).inputs.value).toContain("反推一段适合用于 AI 生图的提示词");
         expect((boundFallback["12"] as any).inputs.image).toBe("uploaded_photo.png");
+    });
+
+    it("scans strictly matching _meta.title === 'step' slot with findWorkflowStepNode", () => {
+        // 1. Strict match _meta.title === "step"
+        const wfValid = {
+            "10": {
+                inputs: { value: 4 },
+                class_type: "PrimitiveInt",
+                _meta: { title: "step" },
+            },
+            "20": {
+                inputs: { value: 0 },
+                class_type: "PrimitiveInt",
+                _meta: { title: "seed" },
+            },
+        };
+        const nodeInfo = findWorkflowStepNode(wfValid as any);
+        expect(nodeInfo).not.toBeNull();
+        expect(nodeInfo?.nodeId).toBe("10");
+        expect(nodeInfo?.title).toBe("step");
+        expect(nodeInfo?.inputKey).toBe("value");
+        expect(nodeInfo?.currentValue).toBe(4);
+
+        // 2. Strict rejection: "steps", "Step", "4步" or linked array inputs must return null
+        const wfNonStrict = {
+            "1": { inputs: { value: 4 }, class_type: "PrimitiveInt", _meta: { title: "steps" } },
+            "2": { inputs: { value: 4 }, class_type: "PrimitiveInt", _meta: { title: "Step" } },
+            "3": { inputs: { value: 4 }, class_type: "PrimitiveInt", _meta: { title: "4步" } },
+            "4": { inputs: { steps: ["143", 0] }, class_type: "BasicScheduler", _meta: { title: "step" } },
+        };
+        expect(findWorkflowStepNode(wfNonStrict as any)).toBeNull();
+
+        // 3. Directly labeled scheduler with numeric steps literal
+        const wfDirectScheduler = {
+            "20": {
+                inputs: { steps: 20 },
+                class_type: "BasicScheduler",
+                _meta: { title: "step" },
+            },
+        };
+        const schedulerStepInfo = findWorkflowStepNode(wfDirectScheduler as any);
+        expect(schedulerStepInfo).not.toBeNull();
+        expect(schedulerStepInfo?.inputKey).toBe("steps");
+        expect(schedulerStepInfo?.currentValue).toBe(20);
+
+        // 4. updateWorkflowNodeInput updates step integer without mutating original
+        const updated = updateWorkflowNodeInput(wfValid as any, "10", "value", 8);
+        expect((updated["10"] as any).inputs.value).toBe(8);
+        expect((wfValid["10"] as any).inputs.value).toBe(4);
+    });
+
+    it("injects step parameter into node with _meta.title === 'step' during dispatch", () => {
+        const wf = {
+            "5": {
+                inputs: { value: 4 },
+                class_type: "PrimitiveInt",
+                _meta: { title: "step" },
+            },
+            "6": {
+                inputs: { value: "test prompt" },
+                class_type: "PrimitiveStringMultiline",
+                _meta: { title: "prompt" },
+            },
+        };
+
+        const dispatched = dispatchComfyuiModelWorkflow(videoMinimaxH3OmniProfile, wf as any, {
+            prompt: "a majestic mountain",
+            step: 12,
+        });
+
+        expect((dispatched["5"] as any).inputs.value).toBe(12);
+
+        // Fractional step is rounded to nearest integer
+        const dispatchedFraction = dispatchComfyuiModelWorkflow(videoMinimaxH3OmniProfile, wf as any, {
+            prompt: "a majestic mountain",
+            step: 7.6 as any,
+        });
+        expect((dispatchedFraction["5"] as any).inputs.value).toBe(8);
     });
 });

@@ -203,7 +203,7 @@
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "select_models_diffusion_models"
+      "title": "UNet加载器"
     }
   },
   "136": {

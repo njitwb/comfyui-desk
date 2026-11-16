@@ -346,7 +346,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 <div
                     className="absolute left-3 bottom-full z-[65] origin-bottom-left"
                     style={{
-                        transform: `scale(${1 / safeScale})`,
+                        transform: `scale(var(--canvas-inv-scale, ${1 / safeScale}))`,
                         paddingBottom: 6,
                         maxWidth: `${Math.max(160, (data.width - 24) * safeScale)}px`,
                     }}
@@ -521,7 +521,47 @@ export const CanvasNode = React.memo(function CanvasNode({
             ) : null}
         </div>
     );
-});
+}, areCanvasNodePropsEqual);
+
+export function areCanvasNodePropsEqual(prev: CanvasNodeProps, next: CanvasNodeProps): boolean {
+    if (prev.data !== next.data) return false;
+    if (prev.isSelected !== next.isSelected) return false;
+    if (prev.hasMultipleSelected !== next.hasMultipleSelected) return false;
+    if (prev.isRelated !== next.isRelated) return false;
+    if (prev.isFocusRelated !== next.isFocusRelated) return false;
+    // For selected or focus-related nodes, allow scale changes to pass through so
+    // resize handles, title widths, and plugin contexts stay accurate to the current zoom.
+    // Unselected nodes skip scale re-renders, preventing canvas-wide re-render cascades.
+    if ((prev.isSelected || next.isSelected || prev.isFocusRelated || next.isFocusRelated) && prev.scale !== next.scale) {
+        return false;
+    }
+    if (prev.isConnectionTarget !== next.isConnectionTarget) return false;
+    if (prev.isConnectionRejected !== next.isConnectionRejected) return false;
+    if (prev.hasInvalidConnections !== next.hasInvalidConnections) return false;
+    if (prev.isConnecting !== next.isConnecting) return false;
+    if (prev.referenceSelectionState !== next.referenceSelectionState) return false;
+    if (prev.groupChildCount !== next.groupChildCount) return false;
+    if (prev.isGroupDropTarget !== next.isGroupDropTarget) return false;
+    if (prev.batchExpanded !== next.batchExpanded) return false;
+    if (prev.showImageInfo !== next.showImageInfo) return false;
+    if (prev.registryVersion !== next.registryVersion) return false;
+    if (prev.pluginHost !== next.pluginHost) return false;
+
+    if (prev.data.type === CanvasNodeType.Config && prev.renderNodeContent !== next.renderNodeContent) {
+        return false;
+    }
+
+    if (prev.mentionReferences !== next.mentionReferences) {
+        const prevRefs = prev.mentionReferences || [];
+        const nextRefs = next.mentionReferences || [];
+        if (prevRefs.length !== nextRefs.length) return false;
+        for (let i = 0; i < prevRefs.length; i++) {
+            if (prevRefs[i] !== nextRefs[i]) return false;
+        }
+    }
+
+    return true;
+}
 
 function NodeContent(props: NodeContentRendererProps) {
     const { node } = props;
@@ -570,7 +610,7 @@ function GroupNodeContent({ node, theme, groupChildCount, scale }: NodeContentRe
                 className="flex h-7 max-w-full origin-top-left items-center gap-2 px-1 text-xs font-medium"
                 style={{
                     color: theme.node.text,
-                    transform: `scale(${1 / safeScale})`,
+                    transform: `scale(var(--canvas-inv-scale, ${1 / safeScale}))`,
                 }}
             >
                 <Group className="size-3.5 shrink-0" style={{ color: theme.node.muted }} />
@@ -1183,7 +1223,7 @@ function ConnectionHandleDot({
                 left: isRight ? "100%" : undefined,
                 right: !isRight ? "100%" : undefined,
                 top: "50%",
-                transform: `translateY(-50%) scale(${1 / safeScale})`,
+                transform: `translateY(-50%) scale(var(--canvas-inv-scale, ${1 / safeScale}))`,
                 transformOrigin: isRight ? "left center" : "right center",
             }}
             onMouseEnter={() => setIsHovered(true)}
@@ -1201,7 +1241,7 @@ function ConnectionHandleDot({
                     }`}
                     style={{
                         background: theme.node.panel,
-                        borderColor: theme.node.activeStroke,
+                        borderColor: (theme.node as { activeStroke?: string; stroke?: string }).activeStroke || theme.node.stroke,
                         color: theme.node.text,
                         transformOrigin: "left center",
                         transform: stickyOffset ? `translate(${stickyOffset.x}px, ${stickyOffset.y}px)` : "translate(0, 0)",

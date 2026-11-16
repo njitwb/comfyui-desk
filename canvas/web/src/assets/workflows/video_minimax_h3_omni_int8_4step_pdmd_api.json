@@ -143,7 +143,7 @@
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "select_models_diffusion_models"
+      "title": "UNet加载器"
     }
   },
   "14": {
@@ -328,7 +328,7 @@
     },
     "class_type": "PrimitiveInt",
     "_meta": {
-      "title": "4步"
+      "title": "step"
     }
   },
   "75": {

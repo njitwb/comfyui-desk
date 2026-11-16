@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
+import { useDeferredOutsideClick } from "./use-deferred-outside-click";
+
 import {
     VideoSettingsPanel,
     videoSecondsLabel,
@@ -50,50 +52,25 @@ export function CanvasVideoSettingsPopover({
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
+    const onOpenChangeRef = useRef(onOpenChange);
+    onOpenChangeRef.current = onOpenChange;
     const [open, setOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
 
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
-        onOpenChange?.(nextOpen);
+        onOpenChangeRef.current?.(nextOpen);
     };
 
-    useEffect(() => {
-        if (!open) return;
-        const syncPosition = () => setButtonRect(buttonRef.current?.getBoundingClientRect() || null);
-        const closeOnOutsidePointer = (event: PointerEvent) => {
-            const target = event.target;
-            if (!(target instanceof Node)) return;
-            if (
-                buttonRef.current?.contains(target) ||
-                panelRef.current?.contains(target) ||
-                (target instanceof Element && Boolean(target.closest(".ant-tooltip, .ant-popover, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown")))
-            ) return;
-            if (document.activeElement instanceof HTMLElement && panelRef.current?.contains(document.activeElement)) {
-                document.activeElement.blur();
-            }
-            updateOpen(false);
-        };
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                updateOpen(false);
-            }
-        };
+    useDeferredOutsideClick({
+        open,
+        onClose: () => updateOpen(false),
+        ignoreRefs: [buttonRef, panelRef],
+        blurElementRef: panelRef,
+        onSyncPosition: () => setButtonRect(buttonRef.current?.getBoundingClientRect() || null),
+    });
 
-        syncPosition();
-        window.addEventListener("resize", syncPosition);
-        window.addEventListener("scroll", syncPosition, true);
-        window.addEventListener("pointerdown", closeOnOutsidePointer, true);
-        window.addEventListener("keydown", handleKeyDown);
-        return () => {
-            window.removeEventListener("resize", syncPosition);
-            window.removeEventListener("scroll", syncPosition, true);
-            window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
-            window.removeEventListener("keydown", handleKeyDown);
-        };
-    }, [open]);
-
-    const effectiveModelId = modelId || (videoMode === "frame" ? "frame-video-minimax-h3-fp8-4step-pdmd" : videoMode === "omni" ? "omni-video-minimax-h3-fp8-4step-pdmd" : undefined) || config?.videoModel || config?.model;
+    const effectiveModelId = modelId || (videoMode === "frame" ? "frame-video-minimax-h3-int8-6step-selflift" : videoMode === "omni" ? "omni-video-minimax-h3-int8-6step-selflift" : undefined) || config?.videoModel || config?.model;
     const profile = getModelProfile(effectiveModelId) || videoMinimaxH3OmniProfile;
     const currentMode = videoMode || (profile.category === "frameVideo" ? "frame" : (config?.videoMode === "frame" ? "frame" : "omni"));
     const currentSize = size || config?.size;

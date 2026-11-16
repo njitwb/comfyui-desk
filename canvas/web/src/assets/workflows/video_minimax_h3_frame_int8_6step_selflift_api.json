@@ -1,12 +1,12 @@
 {
-  "92": {
+  "1": {
     "inputs": {
       "filename_prefix": "video/MiniMax_H3",
       "format": "auto",
       "format.codec": "auto",
       "codec": "auto",
       "video": [
-        "105:91",
+        "23",
         0
       ]
     },
@@ -15,52 +15,52 @@
       "title": "output_video"
     }
   },
-  "114": {
+  "2": {
     "inputs": {
-      "image": "025ebb6f4ab39273f7745d14f565e846c6f29a0171def7d7c34501a4aee20403.png"
+      "image": "fisrt.png"
     },
     "class_type": "LoadImage",
     "_meta": {
       "title": "first_frame"
     }
   },
-  "121": {
+  "6": {
     "inputs": {
-      "value": 0
+      "value": 1920
     },
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "width"
     }
   },
-  "122": {
+  "7": {
     "inputs": {
-      "value": 0
+      "value": 1088
     },
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "height"
     }
   },
-  "123": {
+  "8": {
     "inputs": {
-      "Number": ""
+      "Number": "5"
     },
     "class_type": "Float",
     "_meta": {
       "title": "duration"
     }
   },
-  "124": {
+  "9": {
     "inputs": {
-      "image": "025ebb6f4ab39273f7745d14f565e846c6f29a0171def7d7c34501a4aee20403.png"
+      "image": "last.png"
     },
     "class_type": "LoadImage",
     "_meta": {
       "title": "last_frame"
     }
   },
-  "125": {
+  "10": {
     "inputs": {
       "value": 0
     },
@@ -69,16 +69,16 @@
       "title": "seed"
     }
   },
-  "126": {
+  "11": {
     "inputs": {
-      "value": ""
+      "value": "Keep the exact camera position, the same three-fleet composition and the same pale gas giant backdrop as the reference image, but now the standoff has just broken into open battle. Blue-white lance beams and glowing tracer salvos cross the open space between the fleets; visible shield envelopes ripple into glowing domes around the ships. A cruiser on the center line has taken a hit and its flank blooms into a spray of molten debris tumbling slowly outward. The left wedge of blocky gunmetal warships has driven forward and now sits noticeably closer to camera, and the surviving ships have spread into a broken mass of overlapping dark silhouettes backlit by the gas giant's limb. Drifting debris field, glowing plasma trails, brighter volumetric lighting, cinematic, extremely high detail."
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
       "title": "prompt"
     }
   },
-  "105:11": {
+  "12": {
     "inputs": {
       "vae_name": "minimax_h3_video_vae_fp16.safetensors"
     },
@@ -87,7 +87,7 @@
       "title": "加载VAE"
     }
   },
-  "105:24": {
+  "13": {
     "inputs": {
       "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
     },
@@ -96,14 +96,14 @@
       "title": "加载VAE"
     }
   },
-  "105:23": {
+  "14": {
     "inputs": {
       "samples": [
-        "105:14",
+        "29",
         0
       ],
       "vae": [
-        "105:24",
+        "13",
         0
       ]
     },
@@ -112,14 +112,14 @@
       "title": "VAE解码（音频）"
     }
   },
-  "105:10": {
+  "15": {
     "inputs": {
       "samples": [
-        "105:14",
+        "29",
         0
       ],
       "vae": [
-        "105:11",
+        "12",
         0
       ]
     },
@@ -128,62 +128,46 @@
       "title": "VAE解码"
     }
   },
-  "105:17": {
+  "16": {
     "inputs": {
-      "sampler_name": "res_multistep"
+      "sampler_name": "euler"
     },
     "class_type": "KSamplerSelect",
     "_meta": {
       "title": "K采样器选择"
     }
   },
-  "105:14": {
+  "17": {
     "inputs": {
-      "noise": [
-        "105:15",
+      "scheduler": "simple",
+      "steps": [
+        "27",
         0
       ],
-      "guider": [
-        "105:16",
-        0
-      ],
-      "sampler": [
-        "105:17",
-        0
-      ],
-      "sigmas": [
-        "105:9",
-        0
-      ],
-      "latent_image": [
-        "105:104",
-        1
-      ]
-    },
-    "class_type": "SamplerCustomAdvanced",
-    "_meta": {
-      "title": "自定义采样器（高级）"
-    }
-  },
-  "105:16": {
-    "inputs": {
+      "denoise": 1,
       "model": [
-        "105:130",
-        0
-      ],
-      "conditioning": [
-        "105:104",
+        "31",
         0
       ]
     },
-    "class_type": "BasicGuider",
+    "class_type": "BasicScheduler",
     "_meta": {
-      "title": "基本引导器"
+      "title": "基本调度器"
     }
   },
-  "105:13": {
+  "20": {
     "inputs": {
-      "clip_name": "qwen3vl_32b_minimax_h3_bf16.safetensors",
+      "unet_name": "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "21": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
       "type": "minimax",
       "device": "default"
     },
@@ -192,29 +176,18 @@
       "title": "加载CLIP"
     }
   },
-  "105:15": {
-    "inputs": {
-      "noise_seed": [
-        "125",
-        0
-      ]
-    },
-    "class_type": "RandomNoise",
-    "_meta": {
-      "title": "随机噪波"
-    }
-  },
-  "105:91": {
+  "23": {
     "inputs": {
       "fps": 24,
       "bit_depth": 8,
       "color_space": "sRGB",
+      "codec": "none",
       "images": [
-        "105:10",
+        "15",
         0
       ],
       "audio": [
-        "105:23",
+        "14",
         0
       ]
     },
@@ -223,73 +196,38 @@
       "title": "创建视频"
     }
   },
-  "105:107": {
-    "inputs": {
-      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
-      "values.a": [
-        "105:111",
-        0
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "数学表达式"
-    }
-  },
-  "105:111": {
-    "inputs": {
-      "value": [
-        "123",
-        0
-      ]
-    },
-    "class_type": "PrimitiveFloat",
-    "_meta": {
-      "title": "Float (duration)"
-    }
-  },
-  "105:6": {
-    "inputs": {
-      "unet_name": "minimax_h3_fl2va_bf16.safetensors",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "UNet加载器"
-    }
-  },
-  "105:104": {
+  "24": {
     "inputs": {
       "prompt": [
-        "126",
+        "11",
         0
       ],
       "width": [
-        "121",
+        "6",
         0
       ],
       "height": [
-        "122",
+        "7",
         0
       ],
       "length": [
-        "105:107",
+        "25",
         1
       ],
       "clip": [
-        "105:13",
+        "21",
         0
       ],
       "vae": [
-        "105:11",
+        "12",
         0
       ],
       "first_frame": [
-        "114",
+        "2",
         0
       ],
       "last_frame": [
-        "124",
+        "9",
         0
       ]
     },
@@ -298,26 +236,111 @@
       "title": "MiniMax H3 图像转视频"
     }
   },
-  "105:129": {
+  "25": {
     "inputs": {
-      "model": [
-        "105:128",
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "8",
         0
       ]
     },
-    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "class_type": "ComfyMathExpression",
     "_meta": {
-      "title": "MiniMax H3 Mem Eff Sage Attention Patch"
+      "title": "数学表达式"
     }
   },
-  "105:130": {
+  "26": {
+    "inputs": {
+      "lora_name": "pika_h3_flex_fl2va_v1_bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora1"
+    }
+  },
+  "27": {
+    "inputs": {
+      "value": 6
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "step"
+    }
+  },
+  "29": {
+    "inputs": {
+      "seed": [
+        "10",
+        0
+      ],
+      "cfg": 1,
+      "transition_step": 4,
+      "lowres_scale": 0.5,
+      "rho": 0,
+      "w_min": 0.5,
+      "w_max": 1,
+      "upscaler_model": "minimax_h3_latent_upscaler_3d_conv_v1_fp32.pth",
+      "highres_tiling": false,
+      "upscaler_unload": true,
+      "model": [
+        "31",
+        0
+      ],
+      "positive": [
+        "24",
+        0
+      ],
+      "negative": [
+        "30",
+        0
+      ],
+      "vae": [
+        "12",
+        0
+      ],
+      "latent_image": [
+        "24",
+        1
+      ],
+      "sampler": [
+        "16",
+        0
+      ],
+      "sigmas": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "SelfLiftH3Sampler",
+    "_meta": {
+      "title": "SelfLift Progressive Sampler (MiniMax H3)"
+    }
+  },
+  "30": {
+    "inputs": {
+      "conditioning": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "31": {
     "inputs": {
       "reuse_threshold": 0.2,
       "start_percent": 0.15,
       "end_percent": 0.95,
       "verbose": false,
       "model": [
-        "105:129",
+        "32",
         0
       ]
     },
@@ -326,33 +349,18 @@
       "title": "EasyCache"
     }
   },
-  "105:128": {
+  "32": {
     "inputs": {
-      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
-      "strength_model": 0.3,
+      "lora_name": "H3-Licon-VBVR-I2V.safetensors",
+      "strength_model": 1,
       "model": [
-        "105:6",
+        "26",
         0
       ]
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "LoRA加载器（仅模型）"
-    }
-  },
-  "105:9": {
-    "inputs": {
-      "scheduler": "simple",
-      "steps": 8,
-      "denoise": 1,
-      "model": [
-        "105:130",
-        0
-      ]
-    },
-    "class_type": "BasicScheduler",
-    "_meta": {
-      "title": "基本调度器"
+      "title": "lora2"
     }
   }
 }
